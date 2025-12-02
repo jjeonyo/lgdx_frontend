@@ -221,7 +221,12 @@ class AchievementScreen extends StatelessWidget {
                       left: 72 * scale,
                       child: GestureDetector(
                         onTap: () {
-                          Navigator.pop(context);
+                          // 모든 화면을 제거하고 홈 화면으로 이동
+                          Navigator.pushAndRemoveUntil(
+                            context,
+                            MaterialPageRoute(builder: (context) => const ElliHomeScreen()),
+                            (route) => false, // 모든 이전 라우트 제거
+                          );
                         },
                         child: Container(
                           width: 158 * scale,

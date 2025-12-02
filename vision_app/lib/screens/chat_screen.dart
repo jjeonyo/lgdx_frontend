@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'live_screen.dart';
+import 'video_production_screen.dart';
 
 class ChatScreen extends StatelessWidget {
   const ChatScreen({super.key});
@@ -43,37 +45,13 @@ class ChatScreen extends StatelessWidget {
                 color: Colors.white,
               ),
             ),
-            // 하단 네비게이션바 (iPhone-status-bar(lower)/Dark-mode2)
-            // Figma: height:32, 색상: white
-            Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              height: 32 * scale,
-              child: Container(
-                color: Colors.white,
-                child: Center(
-                  child: Padding(
-                    padding: EdgeInsets.only(top: 21 * scale),
-                    child: Container(
-                      width: 129 * scale,
-                      height: 5 * scale,
-                      decoration: BoxDecoration(
-                        color: Colors.black,
-                        borderRadius: BorderRadius.circular(10 * scale),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            // 메인 콘텐츠 영역
-            // Figma: top:24, left:0, width:360, height:744
+            // 메인 콘텐츠 영역 (전체 메인 콘텐츠 영역) - 피그마: h-[776px], 화면 하단까지 채움
+            // Figma: top:24, left:0, width:360, height:776
             Positioned(
               top: 24 * scale,
               left: 0,
               right: 0,
-              bottom: 32 * scale,
+              bottom: 0, // 화면 하단까지 채움
               child: Container(
                 color: Colors.white,
                 child: Stack(
@@ -136,18 +114,61 @@ class ChatScreen extends StatelessWidget {
                               Spacer(), // 오른쪽 아이콘을 밀어냄
                               // 상단 오른쪽 아이콘들 (채팅 상단 아이콘.png)
                               // Figma: Frame 1686558315, x=250, y=18, width=94.28571319580078, height=22.285715103149414
-                              Image.asset(
-                                'assets/images/채팅 상단 아이콘.png',
-                                width: 94.28571319580078 * scale,
-                                height: 22.285715103149414 * scale,
-                                fit: BoxFit.contain,
-                                errorBuilder: (context, error, stackTrace) {
-                                  return Container(
+                              Stack(
+                                children: [
+                                  // 아이콘 이미지
+                                  Image.asset(
+                                    'assets/images/채팅 상단 아이콘.png',
                                     width: 94.28571319580078 * scale,
                                     height: 22.285715103149414 * scale,
-                                    color: Colors.grey.withValues(alpha: 0.3),
-                                  );
-                                },
+                                    fit: BoxFit.contain,
+                                    errorBuilder: (context, error, stackTrace) {
+                                      return Container(
+                                        width: 94.28571319580078 * scale,
+                                        height: 22.285715103149414 * scale,
+                                        color: Colors.grey.withValues(alpha: 0.3),
+                                      );
+                                    },
+                                  ),
+                                  // 가장 왼쪽 아이콘 클릭 영역 (이미지의 왼쪽 1/3)
+                                  Positioned(
+                                    left: 0,
+                                    top: 0,
+                                    width: (94.28571319580078 / 3) * scale, // 이미지 너비의 1/3
+                                    height: 22.285715103149414 * scale,
+                                    child: GestureDetector(
+                                      onTap: () {
+                                        // 가장 왼쪽 아이콘 클릭 시 LiveScreen으로 이동
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(builder: (context) => const LiveScreen()),
+                                        );
+                                      },
+                                      child: Container(
+                                        color: Colors.transparent, // 투명한 클릭 영역
+                                      ),
+                                    ),
+                                  ),
+                                  // 가운데 아이콘 클릭 영역 (이미지의 가운데 1/3)
+                                  Positioned(
+                                    left: (94.28571319580078 / 3) * scale, // 1/3 지점부터 시작
+                                    top: 0,
+                                    width: (94.28571319580078 / 3) * scale, // 이미지 너비의 1/3
+                                    height: 22.285715103149414 * scale,
+                                    child: GestureDetector(
+                                      onTap: () {
+                                        // 가운데 아이콘 클릭 시 VideoProductionScreen으로 이동
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(builder: (context) => const VideoProductionScreen()),
+                                        );
+                                      },
+                                      child: Container(
+                                        color: Colors.transparent, // 투명한 클릭 영역
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
                           ),

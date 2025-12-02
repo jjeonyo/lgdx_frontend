@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
 import 'achievement_screen.dart';
+import 'chat_screen.dart';
 
 class VideoPlayerOverlayScreen extends StatefulWidget {
   const VideoPlayerOverlayScreen({super.key});
@@ -295,7 +296,7 @@ class _VideoPlayerOverlayScreenState extends State<VideoPlayerOverlayScreen> {
                                         fontFamily: 'Noto Sans',
                                         fontSize: 14 * scale, // 12 -> 14
                                         fontWeight: FontWeight.w400,
-                                        color: const Color(0xFF9A9A9A),
+                                        color: const Color(0xFF6B6B6B), // achievement_screen과 동일한 진한 회색
                                         letterSpacing: -0.24 * scale,
                                         height: 1.5,
                                       ),
@@ -313,29 +314,38 @@ class _VideoPlayerOverlayScreenState extends State<VideoPlayerOverlayScreen> {
                                       children: [
                                         // "채팅 문의" 버튼
                                         // Figma: x=0, y=0, width=104, height=40
-                                        Container(
-                                          width: 104 * scale,
-                                          height: 40 * scale,
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFF6F42EE),
-                                            borderRadius: BorderRadius.circular(40 * scale),
-                                            boxShadow: [
-                                              BoxShadow(
-                                                color: Colors.black.withValues(alpha: 0.13),
-                                                blurRadius: 22 * scale,
-                                                offset: Offset(3 * scale, 3 * scale),
-                                              ),
-                                            ],
-                                          ),
-                                          child: Center(
-                                            child: Text(
-                                              '채팅 문의',
-                                              style: TextStyle(
-                                                fontFamily: 'Noto Sans',
-                                                fontSize: 16 * scale,
-                                                fontWeight: FontWeight.w400,
-                                                color: Colors.white,
-                                                letterSpacing: -0.8 * scale,
+                                        GestureDetector(
+                                          onTap: () {
+                                            // 채팅 문의 버튼 클릭 시 ChatScreen으로 이동
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(builder: (context) => const ChatScreen()),
+                                            );
+                                          },
+                                          child: Container(
+                                            width: 104 * scale,
+                                            height: 40 * scale,
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFF6F42EE),
+                                              borderRadius: BorderRadius.circular(40 * scale),
+                                              boxShadow: [
+                                                BoxShadow(
+                                                  color: Colors.black.withValues(alpha: 0.13),
+                                                  blurRadius: 22 * scale,
+                                                  offset: Offset(3 * scale, 3 * scale),
+                                                ),
+                                              ],
+                                            ),
+                                            child: Center(
+                                              child: Text(
+                                                '채팅 문의',
+                                                style: TextStyle(
+                                                  fontFamily: 'Noto Sans',
+                                                  fontSize: 16 * scale,
+                                                  fontWeight: FontWeight.w400,
+                                                  color: Colors.white,
+                                                  letterSpacing: -0.8 * scale,
+                                                ),
                                               ),
                                             ),
                                           ),

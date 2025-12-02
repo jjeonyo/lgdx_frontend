@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'video_production_screen.dart';
 import 'chat_screen.dart';
+import 'elli_home_screen.dart';
 
 class LiveScreenWithButtons extends StatelessWidget {
   const LiveScreenWithButtons({super.key});
@@ -396,7 +397,12 @@ class LiveScreenWithButtons extends StatelessWidget {
               left: 237 * scale, // 57 + 180 = 237
               child: GestureDetector(
                 onTap: () {
-                  Navigator.pop(context);
+                  // 모든 화면을 제거하고 홈 화면으로 이동
+                  Navigator.pushAndRemoveUntil(
+                    context,
+                    MaterialPageRoute(builder: (context) => const ElliHomeScreen()),
+                    (route) => false, // 모든 이전 라우트 제거
+                  );
                 },
                 child: Container(
                   width: 66 * scale,
