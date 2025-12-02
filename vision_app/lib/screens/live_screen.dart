@@ -1,19 +1,199 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:camera/camera.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter_sound/flutter_sound.dart';
 import 'live_screen_with_buttons.dart';
 import 'chat_screen.dart';
 import 'video_production_screen.dart';
 
-class LiveScreen extends StatelessWidget {
+class LiveScreen extends StatefulWidget {
   const LiveScreen({super.key});
 
+  @override
+  State<LiveScreen> createState() => _LiveScreenState();
+}
+
+class _LiveScreenState extends State<LiveScreen> {
   // Figma 프레임 크기: 360x800
   static const double figmaWidth = 360;
   static const double figmaHeight = 800;
 
+  // Gemini Live 관련 상태
+  CameraController? _cameraController;
+  WebSocketChannel? _channel;
+  final FlutterSoundRecorder _recorder = FlutterSoundRecorder();
+  final FlutterSoundPlayer _player = FlutterSoundPlayer();
+  
+  bool _isStreaming = false;
+  bool _isCameraInitialized = false;
+  Timer? _videoTimer;
+  StreamSubscription? _recorderSubscription;
+  
+  // ⚠️ 자신의 PC IP 주소로 변경 필요
+  // Android Emulator: 10.0.2.2
+  // Real Device: 192.168.x.x
+  final String _wsUrl = 'ws://192.168.0.10:8000/ws/chat';
+
+  // Audio Stream Controller
+  final StreamController<Uint8List> _audioStreamController = StreamController<Uint8List>();
+  Sink<Uint8List> get _audioStreamSink => _audioStreamController.sink;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializePermissions();
+    _handleAudioStream();
+  }
+
+  Future<void> _initializePermissions() async {
+    await [Permission.camera, Permission.microphone].request();
+    await _initializeCamera();
+    await _initializeAudio();
+  }
+
+  Future<void> _initializeCamera() async {
+    final cameras = await availableCameras();
+    if (cameras.isEmpty) return;
+
+    _cameraController = CameraController(
+      cameras.first,
+      ResolutionPreset.medium,
+      enableAudio: false,
+    );
+
+    await _cameraController!.initialize();
+    setState(() {
+      _isCameraInitialized = true;
+    });
+  }
+
+  Future<void> _initializeAudio() async {
+    await _recorder.openRecorder();
+    await _player.openPlayer();
+  }
+
+  void _connectWebSocket() {
+    try {
+      _channel = WebSocketChannel.connect(Uri.parse(_wsUrl));
+      print("✅ WebSocket Connected");
+
+      _channel!.stream.listen((message) {
+        _handleServerMessage(message);
+      }, onError: (error) {
+        print("❌ WebSocket Error: $error");
+        _stopStreaming();
+      }, onDone: () {
+        print("🔌 WebSocket Closed");
+        _stopStreaming();
+      });
+    } catch (e) {
+      print("❌ Connection Failed: $e");
+    }
+  }
+
+  void _handleServerMessage(dynamic message) async {
+    try {
+      final decoded = jsonDecode(message);
+      if (decoded['type'] == 'audio') {
+        final audioBytes = base64Decode(decoded['data']);
+        await _playAudioChunk(audioBytes);
+      } else if (decoded['type'] == 'text') {
+        print("[Gemini]: ${decoded['data']}");
+      }
+    } catch (e) {
+      print("Message Error: $e");
+    }
+  }
+
+  Future<void> _playAudioChunk(Uint8List data) async {
+    if (_player.isPlaying) {
+      await _player.feedFromStream(data);
+    } else {
+      await _player.startPlayerFromStream(
+        codec: Codec.pcm16,
+        numChannels: 1,
+        sampleRate: 24000,
+      );
+      await _player.feedFromStream(data);
+    }
+  }
+
+  Future<void> _startStreaming() async {
+    if (!_isCameraInitialized) return;
+    if (_channel == null) _connectWebSocket();
+
+    setState(() {
+      _isStreaming = true;
+    });
+
+    // 1. Start Audio Recording Stream
+    await _recorder.startRecorder(
+      toStream: _audioStreamSink,
+      codec: Codec.pcm16,
+      numChannels: 1,
+      sampleRate: 16000,
+    );
+
+    // 2. Start Video Timer (1 FPS)
+    _videoTimer = Timer.periodic(const Duration(milliseconds: 1000), (timer) async {
+      if (_cameraController != null && _cameraController!.value.isInitialized) {
+        try {
+          final image = await _cameraController!.takePicture();
+          final bytes = await image.readAsBytes();
+          final b64 = base64Encode(bytes);
+          
+          _channel?.sink.add(jsonEncode({
+            "type": "image",
+            "data": b64
+          }));
+        } catch (e) {
+          print("Camera Capture Error: $e");
+        }
+      }
+    });
+  }
+
+  void _handleAudioStream() {
+    _audioStreamController.stream.listen((data) {
+      if (_isStreaming && _channel != null) {
+        _channel!.sink.add(jsonEncode({
+          "type": "audio",
+          "data": base64Encode(data)
+        }));
+      }
+    });
+  }
+
+  Future<void> _stopStreaming() async {
+    setState(() {
+      _isStreaming = false;
+    });
+
+    _videoTimer?.cancel();
+    await _recorder.stopRecorder();
+    await _player.stopPlayer();
+    _channel?.sink.close();
+    _channel = null;
+  }
+
+  @override
+  void dispose() {
+    _videoTimer?.cancel();
+    _recorder.closeRecorder();
+    _player.closePlayer();
+    _cameraController?.dispose();
+    _audioStreamController.close();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
-    // 상태바 스타일 설정 (Figma: #faf9fd 배경)
+    // 상태바 스타일 설정
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
       statusBarColor: Color(0xFFFAF9FD),
       statusBarIconBrightness: Brightness.dark,
@@ -29,53 +209,46 @@ class LiveScreen extends StatelessWidget {
     final scale = screenWidth / figmaWidth;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF3F1FB), // Rectangle 287 배경색
+      backgroundColor: const Color(0xFFF3F1FB),
       body: SizedBox(
         width: screenWidth,
         height: screenHeight,
         child: Stack(
           children: [
-            // Rectangle 287 배경 그라데이션 (전체 메인 콘텐츠 영역) - 피그마: h-[776px], 화면 하단까지 채움
-            // Figma: Rectangle 287, x=0, y=24, width=360, height=776
-            // 그라데이션: F3F1FB 42%, 7145F1 100%
+            // 배경 그라데이션
             Positioned(
               top: 24 * scale,
               left: 0,
               right: 0,
-              bottom: 0, // 화면 하단까지 채움
+              bottom: 0,
               child: Container(
                 decoration: const BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      Color(0xFFF3F1FB), // F3F1FB
-                      Color(0xFF7145F1), // 7145F1
+                      Color(0xFFF3F1FB),
+                      Color(0xFF7145F1),
                     ],
-                    stops: [0.42, 1.0], // F3F1FB 42%, 7145F1 100%
+                    stops: [0.42, 1.0],
                   ),
                 ),
               ),
             ),
-            // 상단 상태바 영역 (Status Bar/Android)
-            // Figma: height:24, 색상: #faf9fd
+            // 상단 상태바 영역
             Positioned(
               top: 0,
               left: 0,
               right: 0,
               height: 24 * scale,
-              child: Container(
-                color: const Color(0xFFFAF9FD),
-              ),
+              child: Container(color: const Color(0xFFFAF9FD)),
             ),
             // "실시간 진단" 텍스트와 빨간 점
-            // Figma: top:70, left:23
             Positioned(
               top: 70 * scale,
               left: 23 * scale,
               child: Row(
                 children: [
-                  // 빨간 점 (Ellipse 4765)
                   Container(
                     width: 9 * scale,
                     height: 9 * scale,
@@ -85,7 +258,6 @@ class LiveScreen extends StatelessWidget {
                     ),
                   ),
                   SizedBox(width: 10 * scale),
-                  // "실시간 진단" 텍스트
                   Text(
                     '실시간 진단',
                     style: TextStyle(
@@ -100,16 +272,12 @@ class LiveScreen extends StatelessWidget {
                 ],
               ),
             ),
-            // 오른쪽 상단 아이콘 버튼들 (3개 아이콘이 하나의 이미지에 포함)
-            // Figma: Frame 1686558316 위치
-            // 전체 프레임 기준: left: 12 + (-1) + 235 = 246, top: 68 + 0 + 1 = 69
-            // 크기: width: 97.28571319580078, height: 24
+            // 오른쪽 상단 아이콘 버튼들
             Positioned(
               top: 69 * scale,
               left: 246 * scale,
               child: Stack(
                 children: [
-                  // 아이콘 이미지
                   Image.asset(
                     'assets/images/라이브 아이콘.png',
                     width: 97.28571319580078 * scale,
@@ -123,49 +291,32 @@ class LiveScreen extends StatelessWidget {
                       );
                     },
                   ),
-                  // 가장 왼쪽 채팅 아이콘 클릭 영역 (이미지의 왼쪽 1/3)
+                  // 채팅 아이콘 클릭 영역
                   Positioned(
                     left: 0,
                     top: 0,
-                    width: (97.28571319580078 / 3) * scale, // 이미지 너비의 1/3
+                    width: (97.28571319580078 / 3) * scale,
                     height: 24 * scale,
                     child: GestureDetector(
-                      onTap: () {
-                        // 채팅 아이콘 클릭 시 ChatScreen으로 이동
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (context) => const ChatScreen()),
-                        );
-                      },
-                      child: Container(
-                        color: Colors.transparent, // 투명한 클릭 영역
-                      ),
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const ChatScreen())),
+                      child: Container(color: Colors.transparent),
                     ),
                   ),
-                  // 2번째 동영상 아이콘 클릭 영역 (이미지의 가운데 1/3)
+                  // 동영상 아이콘 클릭 영역
                   Positioned(
-                    left: (97.28571319580078 / 3) * scale, // 1/3 지점부터 시작
+                    left: (97.28571319580078 / 3) * scale,
                     top: 0,
-                    width: (97.28571319580078 / 3) * scale, // 이미지 너비의 1/3
+                    width: (97.28571319580078 / 3) * scale,
                     height: 24 * scale,
                     child: GestureDetector(
-                      onTap: () {
-                        // 동영상 아이콘 클릭 시 VideoProductionScreen으로 이동
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (context) => const VideoProductionScreen()),
-                        );
-                      },
-                      child: Container(
-                        color: Colors.transparent, // 투명한 클릭 영역
-                      ),
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const VideoProductionScreen())),
+                      child: Container(color: Colors.transparent),
                     ),
                   ),
                 ],
               ),
             ),
-            // 중앙 비디오 영역 (Placeholder)
-            // Figma: top:112, left:0, width:360, height:554
+            // 중앙 비디오 영역 (카메라 프리뷰 연결)
             Positioned(
               top: 112 * scale,
               left: 0,
@@ -181,17 +332,21 @@ class LiveScreen extends StatelessWidget {
                   ),
                   borderRadius: BorderRadius.circular(8 * scale),
                 ),
-                child: Center(
-                  child: Icon(
-                    Icons.videocam,
-                    size: 60 * scale,
-                    color: const Color(0xFFAFB1B6),
-                  ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(6 * scale),
+                  child: _isCameraInitialized
+                      ? CameraPreview(_cameraController!)
+                      : const Center(
+                          child: Icon(
+                            Icons.videocam,
+                            size: 60,
+                            color: Color(0xFFAFB1B6),
+                          ),
+                        ),
                 ),
               ),
             ),
             // 왼쪽 하단 캐릭터 이미지
-            // Figma: top:509, left:19, width:95, height:143
             Positioned(
               top: 509 * scale,
               left: 19 * scale,
@@ -211,19 +366,11 @@ class LiveScreen extends StatelessWidget {
               ),
             ),
             // 말풍선
-            // Figma: top:509, left:calc(25%+23px), width:223, height:80
-            // 캐릭터(19px) + 캐릭터 너비(95px) + 간격 = 약 114px부터 시작
             Positioned(
               top: 509 * scale,
-              left: (19 + 95 + 10) * scale, // 캐릭터 오른쪽에 배치
+              left: (19 + 95 + 10) * scale,
               child: GestureDetector(
-                onTap: () {
-                  // 말풍선 클릭 시 버튼이 있는 화면으로 이동
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const LiveScreenWithButtons()),
-                  );
-                },
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const LiveScreenWithButtons())),
                 child: Container(
                   width: 223 * scale,
                   height: 80 * scale,
@@ -252,41 +399,41 @@ class LiveScreen extends StatelessWidget {
                 ),
               ),
             ),
-            // 하단 컨트롤 버튼들 (3개)
-            // Figma: Frame 1686558300, x=57, y=687, width=246, height=44
-            // shadow: 0px_4px_4px_0px_rgba(0,0,0,0.25)
-            // 첫 번째 버튼 (Rectangle 34627593): Frame 내부 x=0, y=0, width=66, height=44
+            // 하단 컨트롤 버튼들
+            // 첫 번째 버튼 (카메라/스트리밍 토글)
             Positioned(
               top: 687 * scale,
               left: 57 * scale,
-              child: Container(
-                width: 66 * scale,
-                height: 44 * scale,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(19.5 * scale),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.25),
-                      blurRadius: 4 * scale,
-                      offset: Offset(0, 4 * scale),
+              child: GestureDetector(
+                onTap: _isStreaming ? _stopStreaming : _startStreaming,
+                child: Container(
+                  width: 66 * scale,
+                  height: 44 * scale,
+                  decoration: BoxDecoration(
+                    color: _isStreaming ? Colors.red : Colors.white,
+                    borderRadius: BorderRadius.circular(19.5 * scale),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.25),
+                        blurRadius: 4 * scale,
+                        offset: Offset(0, 4 * scale),
+                      ),
+                    ],
+                  ),
+                  child: Center(
+                    child: Icon(
+                      _isStreaming ? Icons.stop : Icons.videocam,
+                      size: 24 * scale,
+                      color: _isStreaming ? Colors.white : Colors.black,
                     ),
-                  ],
-                ),
-                child: Center(
-                  child: Icon(
-                    Icons.videocam,
-                    size: 24 * scale,
-                    color: Colors.black,
                   ),
                 ),
               ),
             ),
-            // 두 번째 버튼 (Rectangle 290): Frame 내부 x=90, y=0, width=66, height=44
-            // 재생 버튼 이미지 사용
+            // 두 번째 버튼 (재생)
             Positioned(
               top: 687 * scale,
-              left: 147 * scale, // 57 + 90 = 147
+              left: 147 * scale,
               child: Container(
                 width: 66 * scale,
                 height: 44 * scale,
@@ -311,22 +458,20 @@ class LiveScreen extends StatelessWidget {
                       return Container(
                         width: 66 * scale,
                         height: 44 * scale,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF29344E).withValues(alpha: 0.54),
-                          borderRadius: BorderRadius.circular(19.5 * scale),
-                        ),
+                        color: const Color(0xFF29344E).withValues(alpha: 0.54),
                       );
                     },
                   ),
                 ),
               ),
             ),
-            // 세 번째 버튼 (Rectangle 291): Frame 내부 x=180, y=0, width=66, height=44
+            // 세 번째 버튼 (닫기)
             Positioned(
               top: 687 * scale,
-              left: 237 * scale, // 57 + 180 = 237
+              left: 237 * scale,
               child: GestureDetector(
                 onTap: () {
+                  _stopStreaming();
                   Navigator.pop(context);
                 },
                 child: Container(
