@@ -21,7 +21,7 @@ class LiveScreen extends StatefulWidget {
 class _LiveScreenState extends State<LiveScreen> {
   // Figma 프레임 크기: 360x800
   static const double figmaWidth = 360;
-  static const double figmaHeight = 800;
+  // static const double figmaHeight = 800;
 
   // Gemini Live 관련 상태
   CameraController? _cameraController;
@@ -32,7 +32,7 @@ class _LiveScreenState extends State<LiveScreen> {
   bool _isStreaming = false;
   bool _isCameraInitialized = false;
   Timer? _videoTimer;
-  StreamSubscription? _recorderSubscription;
+  // StreamSubscription? _recorderSubscription;
   
   // ⚠️ 자신의 PC IP 주소로 변경 필요
   // Android Emulator: 10.0.2.2
@@ -41,7 +41,7 @@ class _LiveScreenState extends State<LiveScreen> {
 
   // Audio Stream Controller
   final StreamController<Uint8List> _audioStreamController = StreamController<Uint8List>();
-  Sink<Uint8List> get _audioStreamSink => _audioStreamController.sink;
+  StreamSink<Uint8List> get _audioStreamSink => _audioStreamController.sink;
 
   @override
   void initState() {
@@ -118,6 +118,8 @@ class _LiveScreenState extends State<LiveScreen> {
         codec: Codec.pcm16,
         numChannels: 1,
         sampleRate: 24000,
+        bufferSize: 8192,
+        interleaved: false, // Mono audio
       );
       await _player.feedFromStream(data);
     }
