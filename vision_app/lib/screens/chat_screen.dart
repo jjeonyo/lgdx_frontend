@@ -1,14 +1,96 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 import 'live_screen.dart';
+import 'live_screen_with_buttons.dart';
 import 'video_production_screen.dart';
 
-class ChatScreen extends StatelessWidget {
+class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
 
+  @override
+  State<ChatScreen> createState() => _ChatScreenState();
+}
+
+class _ChatScreenState extends State<ChatScreen> {
   // Figma 프레임 크기: 360x800
   static const double figmaWidth = 360;
   static const double figmaHeight = 800;
+
+  final TextEditingController _textController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+  final List<Map<String, String>> _messages = []; // 'sender', 'text'
+  bool _isLoading = false;
+
+  // 백엔드 API URL (Android Emulator: 10.0.2.2, iOS Simulator: 127.0.0.1, Real Device: IP Address)
+  // 사용자의 환경에 맞게 수정 필요
+  final String _apiUrl = 'http://127.0.0.1:8000/chat';
+
+  @override
+  void initState() {
+    super.initState();
+    // 초기 환영 메시지
+    _addMessage('ai', '안녕하세요! LG전자 가전제품 전문 상담원 ThinQ 봇입니다.\n무엇을 도와드릴까요?');
+  }
+
+  void _addMessage(String sender, String text) {
+    setState(() {
+      _messages.add({'sender': sender, 'text': text});
+    });
+    _scrollToBottom();
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  Future<void> _sendMessage() async {
+    final text = _textController.text.trim();
+    if (text.isEmpty) return;
+
+    _textController.clear();
+    _addMessage('user', text);
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final response = await http.post(
+        Uri.parse(_apiUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'user_message': text,
+          'user_id': 'test_user', // 실제 앱에서는 고유 ID 사용 권장
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        // UTF-8 디코딩 처리
+        final decodedBody = utf8.decode(response.bodyBytes);
+        final data = jsonDecode(decodedBody);
+        final answer = data['answer'] ?? '죄송합니다. 답변을 받을 수 없습니다.';
+        _addMessage('ai', answer);
+      } else {
+        _addMessage('ai', '오류가 발생했습니다. (Status: ${response.statusCode})');
+      }
+    } catch (e) {
+      _addMessage('ai', '서버 연결에 실패했습니다.\n$e');
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -54,16 +136,11 @@ class ChatScreen extends StatelessWidget {
               bottom: 0, // 화면 하단까지 채움
               child: Container(
                 color: Colors.white,
-                child: Stack(
+                        child: Column(
                   children: [
-                    // 상단 헤더 바
-                    // Figma: height:57, border-bottom: 1px #eaeaeb
-                    Positioned(
-                      top: 0,
-                      left: 0,
-                      right: 0,
+                            // 상단 헤더 바 (높이 고정)
+                            Container(
                       height: 57 * scale,
-                      child: Container(
                         decoration: BoxDecoration(
                           color: Colors.white,
                           border: Border(
@@ -74,28 +151,35 @@ class ChatScreen extends StatelessWidget {
                           ),
                         ),
                         child: Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 12 * scale),
+                                padding: EdgeInsets.symmetric(
+                                    horizontal: 12 * scale),
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
                               // 뒤로가기 버튼
-                              // Figma: arrow_back_24px, x=0, y=0 (Frame 내부 기준)
                               SizedBox(
                                 width: 24 * scale,
                                 height: 24 * scale,
                                 child: IconButton(
-                                  icon: Icon(Icons.arrow_back, size: 24 * scale, color: Colors.black),
+                                        icon: Icon(Icons.arrow_back,
+                                            size: 24 * scale,
+                                            color: Colors.black),
                                   onPressed: () {
-                                    Navigator.pop(context);
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                                builder: (context) =>
+                                                    const LiveScreenWithButtons()),
+                                          );
                                   },
                                   padding: EdgeInsets.zero,
-                                  constraints: BoxConstraints(),
+                                        constraints: const BoxConstraints(),
                                 ),
                               ),
                               // "ELLI" 텍스트
-                              // Figma: x=32, y=3 (Frame 내부 기준), 화살표 옆에 정확하게 일자로 배치
                               Padding(
-                                padding: EdgeInsets.only(left: 8 * scale), // 32 - 24 = 8
+                                      padding: EdgeInsets.only(
+                                          left: 8 * scale), // 32 - 24 = 8
                                 child: Align(
                                   alignment: Alignment.centerLeft,
                                   child: Text(
@@ -111,9 +195,8 @@ class ChatScreen extends StatelessWidget {
                                   ),
                                 ),
                               ),
-                              Spacer(), // 오른쪽 아이콘을 밀어냄
+                                    const Spacer(), // 오른쪽 아이콘을 밀어냄
                               // 상단 오른쪽 아이콘들 (채팅 상단 아이콘.png)
-                              // Figma: Frame 1686558315, x=250, y=18, width=94.28571319580078, height=22.285715103149414
                               Stack(
                                 children: [
                                   // 아이콘 이미지
@@ -122,11 +205,14 @@ class ChatScreen extends StatelessWidget {
                                     width: 94.28571319580078 * scale,
                                     height: 22.285715103149414 * scale,
                                     fit: BoxFit.contain,
-                                    errorBuilder: (context, error, stackTrace) {
+                                          errorBuilder:
+                                              (context, error, stackTrace) {
                                       return Container(
                                         width: 94.28571319580078 * scale,
-                                        height: 22.285715103149414 * scale,
-                                        color: Colors.grey.withValues(alpha: 0.3),
+                                              height:
+                                                  22.285715103149414 * scale,
+                                              color: Colors.grey
+                                                  .withValues(alpha: 0.3),
                                       );
                                     },
                                   ),
@@ -134,37 +220,60 @@ class ChatScreen extends StatelessWidget {
                                   Positioned(
                                     left: 0,
                                     top: 0,
-                                    width: (94.28571319580078 / 3) * scale, // 이미지 너비의 1/3
+                                          width:
+                                              (94.28571319580078 / 3) * scale,
                                     height: 22.285715103149414 * scale,
                                     child: GestureDetector(
                                       onTap: () {
                                         // 가장 왼쪽 아이콘 클릭 시 LiveScreen으로 이동
                                         Navigator.push(
                                           context,
-                                          MaterialPageRoute(builder: (context) => const LiveScreen()),
+                                                MaterialPageRoute(
+                                                    builder: (context) =>
+                                                        const LiveScreen()),
                                         );
                                       },
                                       child: Container(
-                                        color: Colors.transparent, // 투명한 클릭 영역
+                                              color: Colors.transparent,
                                       ),
                                     ),
                                   ),
                                   // 가운데 아이콘 클릭 영역 (이미지의 가운데 1/3)
                                   Positioned(
-                                    left: (94.28571319580078 / 3) * scale, // 1/3 지점부터 시작
+                                          left: (94.28571319580078 / 3) *
+                                              scale,
                                     top: 0,
-                                    width: (94.28571319580078 / 3) * scale, // 이미지 너비의 1/3
+                                          width:
+                                              (94.28571319580078 / 3) * scale,
                                     height: 22.285715103149414 * scale,
                                     child: GestureDetector(
-                                      onTap: () {
-                                        // 가운데 아이콘 클릭 시 VideoProductionScreen으로 이동
+                                            onTap: () async {
+                                              // 1. 백엔드 실행 요청 (비동기)
+                                              try {
+                                                final url = Uri.parse(
+                                                    'http://192.168.0.202:8000/generate-video');
+                                                http.post(url).then((response) {
+                                                  print(
+                                                      "Generation trigger response: ${response.statusCode}");
+                                                }).catchError((error) {
+                                                  print(
+                                                      "Generation trigger error: $error");
+                                                });
+                                              } catch (e) {
+                                                print(
+                                                    "Error triggering generation: $e");
+                                              }
+
+                                              // 2. 화면 이동
                                         Navigator.push(
                                           context,
-                                          MaterialPageRoute(builder: (context) => const VideoProductionScreen()),
+                                                MaterialPageRoute(
+                                                    builder: (context) =>
+                                                        const VideoProductionScreen()),
                                         );
                                       },
                                       child: Container(
-                                        color: Colors.transparent, // 투명한 클릭 영역
+                                              color: Colors.transparent,
                                       ),
                                     ),
                                   ),
@@ -174,20 +283,96 @@ class ChatScreen extends StatelessWidget {
                           ),
                         ),
                       ),
-                    ),
-                    // 하단 입력 바
-                    // Figma: top:673, left:0, width:360, height:71
-                    Positioned(
-                      bottom: 0,
-                      left: 0,
-                      right: 0,
+                            // 채팅 메시지 리스트 (Expanded)
+                            Expanded(
+                              child: ListView.builder(
+                                controller: _scrollController,
+                                padding: EdgeInsets.all(16 * scale),
+                                itemCount: _messages.length +
+                                    (_isLoading ? 1 : 0), // 로딩 인디케이터 포함
+                                itemBuilder: (context, index) {
+                                  if (index == _messages.length) {
+                                    // 로딩 표시
+                                    return Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: Container(
+                                        margin: EdgeInsets.symmetric(
+                                            vertical: 4 * scale),
+                                        padding: EdgeInsets.all(12 * scale),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFF3F1FB),
+                                          borderRadius: BorderRadius.circular(
+                                              12 * scale),
+                                        ),
+                                        child: SizedBox(
+                                          width: 20 * scale,
+                                          height: 20 * scale,
+                                          child: const CircularProgressIndicator(
+                                              strokeWidth: 2),
+                                        ),
+                                      ),
+                                    );
+                                  }
+
+                                  final message = _messages[index];
+                                  final isUser = message['sender'] == 'user';
+
+                                  return Align(
+                                    alignment: isUser
+                                        ? Alignment.centerRight
+                                        : Alignment.centerLeft,
+                                    child: Container(
+                                      margin: EdgeInsets.symmetric(
+                                          vertical: 4 * scale),
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: 16 * scale,
+                                        vertical: 10 * scale,
+                                      ),
+                                      constraints: BoxConstraints(
+                                        maxWidth: screenWidth * 0.7,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: isUser
+                                            ? const Color(0xFF7145F1)
+                                            : const Color(0xFFF3F1FB),
+                                        borderRadius: BorderRadius.only(
+                                          topLeft:
+                                              Radius.circular(18 * scale),
+                                          topRight:
+                                              Radius.circular(18 * scale),
+                                          bottomLeft: isUser
+                                              ? Radius.circular(18 * scale)
+                                              : Radius.zero,
+                                          bottomRight: isUser
+                                              ? Radius.zero
+                                              : Radius.circular(18 * scale),
+                                        ),
+                                      ),
+                                      child: Text(
+                                        message['text']!,
+                                        style: TextStyle(
+                                          fontFamily: 'Noto Sans',
+                                          fontSize: 14 * scale,
+                                          color: isUser
+                                              ? Colors.white
+                                              : Colors.black,
+                                          height: 1.4,
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                            // 하단 입력 바 (높이 고정)
+                            Container(
                       height: 71 * scale,
-                      child: Container(
                         decoration: BoxDecoration(
                           color: Colors.white,
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.25),
+                                    color: Colors.black
+                                        .withValues(alpha: 0.25),
                               blurRadius: 4 * scale,
                               offset: Offset(0, -4 * scale),
                             ),
@@ -205,21 +390,21 @@ class ChatScreen extends StatelessWidget {
                               child: Container(
                                 decoration: BoxDecoration(
                                   color: const Color(0xFFF4F2FD),
-                                  borderRadius: BorderRadius.circular(23 * scale),
+                                        borderRadius: BorderRadius.circular(
+                                            23 * scale),
                                 ),
                                 child: Row(
                                   children: [
                                     // 카메라 아이콘 (파란 동그라미)
-                                    // Figma: Ellipse 4775, x=16.18161153793335, y=692, width=35.030303955078125, height=34
-                                    // 입력 필드가 left:10이므로, 입력 필드 내부 기준으로는 left: 16.18 - 10 = 6.18
                                     Padding(
-                                      padding: EdgeInsets.only(left: 6.18 * scale), // 16.18 - 10 = 6.18
+                                            padding: EdgeInsets.only(
+                                                left: 6.18 * scale),
                                       child: Container(
                                         width: 35.03 * scale,
                                         height: 34 * scale,
-                                        decoration: BoxDecoration(
+                                              decoration: const BoxDecoration(
                                           shape: BoxShape.circle,
-                                          color: const Color(0xFF7145F1),
+                                                color: Color(0xFF7145F1),
                                         ),
                                         child: Icon(
                                           Icons.camera_alt,
@@ -228,48 +413,68 @@ class ChatScreen extends StatelessWidget {
                                         ),
                                       ),
                                     ),
-                                    SizedBox(width: 9.31 * scale), // 60.49 - 16.18 - 35.03 = 9.28
+                                          SizedBox(width: 9.31 * scale),
                                     // 메시지 입력 텍스트
-                                    // Figma: left:60.49, top:700, fontSize:11
                                     Expanded(
-                                      child: Text(
-                                        '메세지 입력...',
+                                      child: TextField(
+                                              controller: _textController,
+                                              onSubmitted: (_) =>
+                                                  _sendMessage(),
+                                        decoration: InputDecoration(
+                                          hintText: '메세지 입력...',
+                                          hintStyle: TextStyle(
+                                            fontFamily: 'Noto Sans',
+                                            fontSize: 11 * scale,
+                                            fontWeight: FontWeight.w400,
+                                                  color:
+                                                      const Color(0xFF9A9A9A),
+                                            letterSpacing: 0.011 * scale,
+                                            height: 1.5,
+                                          ),
+                                          border: InputBorder.none,
+                                          isDense: true,
+                                                contentPadding:
+                                                    EdgeInsets.zero,
+                                        ),
                                         style: TextStyle(
                                           fontFamily: 'Noto Sans',
                                           fontSize: 11 * scale,
                                           fontWeight: FontWeight.w400,
-                                          color: const Color(0xFF9A9A9A),
+                                          color: Colors.black,
                                           letterSpacing: 0.011 * scale,
                                           height: 1.5,
                                         ),
                                       ),
                                     ),
                                     // 전송 버튼
-                                    // Figma: left:318.06, top:701, width:16.485, height:16
                                     Padding(
-                                      padding: EdgeInsets.only(right: 15.94 * scale), // 360 - 318.06 - 16.485 = 25.455
+                                            padding: EdgeInsets.only(
+                                                right: 15.94 * scale),
+                                            child: GestureDetector(
+                                              onTap: _sendMessage,
                                       child: Icon(
                                         Icons.send,
                                         size: 16.485 * scale,
-                                        color: const Color(0xFF7145F1),
-                                      ),
-                                    ),
-                                  ],
+                                                color:
+                                                    const Color(0xFF7145F1),
                                 ),
                               ),
                             ),
                           ],
                         ),
+                                    ),
+                                  ),
+                                ],
                       ),
                     ),
                   ],
                 ),
               ),
             ),
+
           ],
         ),
       ),
     );
   }
 }
-

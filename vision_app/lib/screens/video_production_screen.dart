@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'video_player_screen.dart';
 
 class VideoProductionScreen extends StatefulWidget {
@@ -11,25 +13,61 @@ class VideoProductionScreen extends StatefulWidget {
 }
 
 class _VideoProductionScreenState extends State<VideoProductionScreen> {
-  Timer? _timer;
+  Timer? _pollingTimer;
+  // 백엔드 상태 확인 URL (Android Emulator: 10.0.2.2, iOS Simulator: 127.0.0.1)
+  final String _checkStatusUrl = 'http://127.0.0.1:8000/check-video-status';
 
   @override
   void initState() {
     super.initState();
-    // 3초 후 비디오 플레이어 화면으로 이동
-    _timer = Timer(const Duration(seconds: 3), () {
-      if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const VideoPlayerScreen()),
-        );
-      }
+    _startPolling();
+  }
+
+  void _startPolling() {
+    // 3초마다 상태 확인
+    _pollingTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
+      await _checkVideoStatus();
     });
+  }
+
+  Future<void> _checkVideoStatus() async {
+    try {
+      final response = await http.get(Uri.parse(_checkStatusUrl));
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final status = data['status']; // 'processing', 'completed', 'failed'
+        
+        if (status == 'completed') {
+          _pollingTimer?.cancel();
+          final videoUrl = data['video_url']; // 생성된 비디오 URL
+          
+          if (mounted) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (context) => VideoPlayerScreen(videoUrl: videoUrl),
+              ),
+            );
+          }
+        } else if (status == 'failed') {
+           _pollingTimer?.cancel();
+           if (mounted) {
+             ScaffoldMessenger.of(context).showSnackBar(
+               const SnackBar(content: Text('영상 생성에 실패했습니다.')),
+             );
+             Navigator.pop(context);
+           }
+        }
+      }
+    } catch (e) {
+      print("Error checking status: $e");
+    }
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _pollingTimer?.cancel();
     super.dispose();
   }
 

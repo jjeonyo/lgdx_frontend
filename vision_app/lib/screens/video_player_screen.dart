@@ -1,37 +1,62 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
+import 'package:video_player/video_player.dart';
 import 'video_player_overlay_screen.dart';
 
 class VideoPlayerScreen extends StatefulWidget {
-  const VideoPlayerScreen({super.key});
+  final String? videoUrl;
+
+  const VideoPlayerScreen({super.key, this.videoUrl});
 
   @override
   State<VideoPlayerScreen> createState() => _VideoPlayerScreenState();
 }
 
 class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
-  Timer? _timer;
+  VideoPlayerController? _controller;
+  bool _isInitialized = false;
 
   @override
   void initState() {
     super.initState();
-    // 5초 후 오버레이 화면으로 이동 (비디오 종료 시뮬레이션)
-    _timer = Timer(const Duration(seconds: 5), () {
-      if (mounted) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const VideoPlayerOverlayScreen()),
-        );
-      }
-    });
+    
+    // 비디오 URL이 있으면 컨트롤러 초기화
+    if (widget.videoUrl != null) {
+       _controller = VideoPlayerController.networkUrl(Uri.parse(widget.videoUrl!))
+         ..initialize().then((_) {
+           setState(() {
+             _isInitialized = true;
+           });
+           _controller!.play();
+         });
+       
+       _controller!.addListener(() {
+         if (_controller!.value.position >= _controller!.value.duration) {
+           _navigateToOverlay();
+         }
+       });
+    } else {
+      // URL이 없는 경우 5초 후 이동 (테스트용)
+      Future.delayed(const Duration(seconds: 5), _navigateToOverlay);
+    }
+  }
+
+  void _navigateToOverlay() {
+    if (mounted) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const VideoPlayerOverlayScreen()),
+      );
+    }
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _controller?.dispose();
     super.dispose();
   }
+
 
   // Figma 프레임 크기: 360x800
   static const double figmaWidth = 360;
@@ -108,8 +133,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 constraints: BoxConstraints(),
               ),
             ),
-            // 비디오 placeholder 영역
-            // Figma: top:80, left:0, width:360, height:672
+            // 비디오 영역
             Positioned(
               top: 80 * scale,
               left: 0,
@@ -125,13 +149,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                   ),
                   borderRadius: BorderRadius.circular(8 * scale),
                 ),
-                child: Center(
-                  child: Icon(
-                    Icons.videocam,
-                    size: 60 * scale,
-                    color: const Color(0xFFAFB1B6),
-                  ),
-                ),
+                child: _isInitialized && _controller != null
+                    ? ClipRRect(
+                        borderRadius: BorderRadius.circular(6 * scale),
+                        child: AspectRatio(
+                          aspectRatio: _controller!.value.aspectRatio,
+                          child: VideoPlayer(_controller!),
+                        ),
+                      )
+                    : const Center(
+                        child: CircularProgressIndicator(),
+                      ),
               ),
             ),
           ],
