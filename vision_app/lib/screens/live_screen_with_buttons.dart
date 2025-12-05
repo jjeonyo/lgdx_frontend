@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 import 'video_production_screen.dart';
 import 'chat_screen.dart';
 import 'elli_home_screen.dart';
@@ -266,7 +267,21 @@ class LiveScreenWithButtons extends StatelessWidget {
                     // "예" 버튼
                     // Figma: Frame 1686558294, x=0, y=0, width=90, height=37
                     GestureDetector(
-                      onTap: () {
+                      onTap: () async {
+                        // 1. 백엔드 실행 요청 (비동기, 결과 기다리지 않음 또는 필요시 await)
+                        try {
+                          // 로컬 백엔드 서버 주소 (iOS 시뮬레이터는 localhost, 안드로이드는 10.0.2.2)
+                          final url = Uri.parse('http://127.0.0.1:8000/generate-video');
+                          http.post(url).then((response) {
+                            print("Generation trigger response: ${response.statusCode}");
+                          }).catchError((error) {
+                            print("Generation trigger error: $error");
+                          });
+                        } catch (e) {
+                          print("Error triggering generation: $e");
+                        }
+
+                        // 2. 화면 이동
                         Navigator.push(
                           context,
                           MaterialPageRoute(builder: (context) => const VideoProductionScreen()),
