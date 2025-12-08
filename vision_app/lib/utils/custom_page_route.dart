@@ -8,9 +8,8 @@ class SmoothPageRoute<T> extends PageRouteBuilder<T> {
   SmoothPageRoute({
     required this.child,
     this.direction = AxisDirection.left,
-    RouteSettings? settings,
+    super.settings,
   }) : super(
-          settings: settings,
           transitionDuration: const Duration(milliseconds: 300), // 전환 시간 (기본 300ms)
           reverseTransitionDuration: const Duration(milliseconds: 300),
           pageBuilder: (context, animation, secondaryAnimation) => child,
