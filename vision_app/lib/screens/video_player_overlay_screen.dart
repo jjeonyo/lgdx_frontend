@@ -36,7 +36,6 @@ class _VideoPlayerOverlayScreenState extends State<VideoPlayerOverlayScreen> {
 
   // Figma 프레임 크기: 360x800
   static const double figmaWidth = 360;
-  static const double figmaHeight = 800;
 
   @override
   Widget build(BuildContext context) {

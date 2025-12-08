@@ -1,15 +1,43 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+import 'package:camera/camera.dart';
 import 'live_screen_with_buttons.dart';
 import 'chat_screen.dart';
-import 'video_production_screen.dart';
+import 'customer_service_screen.dart';
+import 'elli_home_screen.dart';
+import '../services/live_camera_service.dart';
 
-class LiveScreen extends StatelessWidget {
+class LiveScreen extends StatefulWidget {
   const LiveScreen({super.key});
+
+  @override
+  State<LiveScreen> createState() => _LiveScreenState();
+}
+
+class _LiveScreenState extends State<LiveScreen> {
+  final LiveCameraService _cameraService = LiveCameraService();
+  bool _isStreaming = false;
 
   // Figma 프레임 크기: 360x800
   static const double figmaWidth = 360;
   static const double figmaHeight = 800;
+  
+  @override
+  void initState() {
+    super.initState();
+    // 엘리홈으로 이동 콜백 설정
+    _cameraService.setOnExitRequested(() {
+      if (mounted) {
+        _cameraService.stopStreaming();
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (context) => const ElliHomeScreen()),
+          (route) => false,
+        );
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -100,71 +128,49 @@ class LiveScreen extends StatelessWidget {
                 ],
               ),
             ),
-            // 오른쪽 상단 아이콘 버튼들 (3개 아이콘이 하나의 이미지에 포함)
-            // Figma: Frame 1686558316 위치
-            // 전체 프레임 기준: left: 12 + (-1) + 235 = 246, top: 68 + 0 + 1 = 69
-            // 크기: width: 97.28571319580078, height: 24
+            // 오른쪽 상단 아이콘 버튼들 (피그마 디자인에 맞게 수정)
+            // Figma: left-[271px], top-[68px], gap-[15px]
             Positioned(
-              top: 69 * scale,
-              left: 246 * scale,
-              child: Stack(
+              top: 68 * scale,
+              left: 271 * scale,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  // 아이콘 이미지
-                  Image.asset(
-                    'assets/images/라이브 아이콘.png',
-                    width: 97.28571319580078 * scale,
-                    height: 24 * scale,
-                    fit: BoxFit.contain,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Container(
-                        width: 97.28571319580078 * scale,
-                        height: 24 * scale,
-                        color: Colors.grey.withValues(alpha: 0.3),
+                  // 채팅 아이콘 (message-text-02)
+                  // Figma: size-[24px]
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const ChatScreen()),
                       );
                     },
-                  ),
-                  // 가장 왼쪽 채팅 아이콘 클릭 영역 (이미지의 왼쪽 1/3)
-                  Positioned(
-                    left: 0,
-                    top: 0,
-                    width: (97.28571319580078 / 3) * scale, // 이미지 너비의 1/3
-                    height: 24 * scale,
-                    child: GestureDetector(
-                      onTap: () {
-                        // 채팅 아이콘 클릭 시 ChatScreen으로 이동
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (context) => const ChatScreen()),
-                        );
-                      },
-                      child: Container(
-                        color: Colors.transparent, // 투명한 클릭 영역
-                      ),
+                    child: SvgPicture.asset(
+                      'assets/images/라이브상단아이콘.svg',
+                      width: 24 * scale,
+                      height: 24 * scale,
                     ),
                   ),
-                  // 2번째 동영상 아이콘 클릭 영역 (이미지의 가운데 1/3)
-                  Positioned(
-                    left: (97.28571319580078 / 3) * scale, // 1/3 지점부터 시작
-                    top: 0,
-                    width: (97.28571319580078 / 3) * scale, // 이미지 너비의 1/3
-                    height: 24 * scale,
-                    child: GestureDetector(
-                      onTap: () {
-                        // 동영상 아이콘 클릭 시 VideoProductionScreen으로 이동
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (context) => const VideoProductionScreen()),
-                        );
-                      },
-                      child: Container(
-                        color: Colors.transparent, // 투명한 클릭 영역
-                      ),
+                  SizedBox(width: 15 * scale), // gap-[15px]
+                  // 헤드셋 아이콘 (Group)
+                  // Figma: size-[22.286px]
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const CustomerServiceScreen()),
+                      );
+                    },
+                    child: SvgPicture.asset(
+                      'assets/images/라이브상단아이콘2.svg',
+                      width: 22.286 * scale,
+                      height: 22.286 * scale,
                     ),
                   ),
                 ],
               ),
             ),
-            // 중앙 비디오 영역 (Placeholder)
+            // 중앙 비디오 영역 (카메라 프리뷰)
             // Figma: top:112, left:0, width:360, height:554
             Positioned(
               top: 112 * scale,
@@ -181,12 +187,22 @@ class LiveScreen extends StatelessWidget {
                   ),
                   borderRadius: BorderRadius.circular(8 * scale),
                 ),
-                child: Center(
-                  child: Icon(
-                    Icons.videocam,
-                    size: 60 * scale,
-                    color: const Color(0xFFAFB1B6),
-                  ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8 * scale),
+                  child: _cameraService.cameraController != null &&
+                          _cameraService.cameraController!.value.isInitialized
+                      ? SizedBox(
+                          width: double.infinity,
+                          height: double.infinity,
+                          child: CameraPreview(_cameraService.cameraController!),
+                        )
+                      : Center(
+                          child: Icon(
+                            Icons.videocam,
+                            size: 60 * scale,
+                            color: const Color(0xFFAFB1B6),
+                          ),
+                        ),
                 ),
               ),
             ),
@@ -259,25 +275,70 @@ class LiveScreen extends StatelessWidget {
             Positioned(
               top: 687 * scale,
               left: 57 * scale,
-              child: Container(
-                width: 66 * scale,
-                height: 44 * scale,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(19.5 * scale),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.25),
-                      blurRadius: 4 * scale,
-                      offset: Offset(0, 4 * scale),
+              child: GestureDetector(
+                onTap: () async {
+                  if (_isStreaming) {
+                    // 스트리밍 중지
+                    await _cameraService.stopStreaming();
+                    setState(() {
+                      _isStreaming = false;
+                    });
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('라이브 스트리밍이 중지되었습니다.')),
+                      );
+                    }
+                  } else {
+                    // 스트리밍 시작
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('라이브 스트리밍을 시작합니다...')),
+                      );
+                    }
+                    final success = await _cameraService.startStreaming(context);
+                    if (success) {
+                      setState(() {
+                        _isStreaming = true;
+                      });
+                      // 카메라 초기화 후 UI 업데이트를 위해 약간의 지연 후 다시 setState
+                      await Future.delayed(const Duration(milliseconds: 300));
+                      if (mounted) {
+                        setState(() {}); // 카메라 프리뷰 표시를 위해 UI 업데이트
+                      }
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('라이브 스트리밍이 시작되었습니다.')),
+                        );
+                      }
+                    } else {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('라이브 스트리밍 시작에 실패했습니다. 권한을 확인해주세요.')),
+                        );
+                      }
+                    }
+                  }
+                },
+                child: Container(
+                  width: 66 * scale,
+                  height: 44 * scale,
+                  decoration: BoxDecoration(
+                    color: _isStreaming ? Colors.red : Colors.white,
+                    borderRadius: BorderRadius.circular(19.5 * scale),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.25),
+                        blurRadius: 4 * scale,
+                        offset: Offset(0, 4 * scale),
+                      ),
+                    ],
+                  ),
+                  child: Center(
+                    child: Icon(
+                      _isStreaming ? Icons.stop : Icons.videocam,
+                      size: 24 * scale,
+                      color: _isStreaming ? Colors.white : Colors.black,
                     ),
-                  ],
-                ),
-                child: Center(
-                  child: Icon(
-                    Icons.videocam,
-                    size: 24 * scale,
-                    color: Colors.black,
                   ),
                 ),
               ),
@@ -322,12 +383,28 @@ class LiveScreen extends StatelessWidget {
               ),
             ),
             // 세 번째 버튼 (Rectangle 291): Frame 내부 x=180, y=0, width=66, height=44
+            // X 버튼: 진단 화면 종료 및 엘리홈으로 이동
             Positioned(
               top: 687 * scale,
               left: 237 * scale, // 57 + 180 = 237
               child: GestureDetector(
                 onTap: () {
-                  Navigator.pop(context);
+                  // 1. WebSocket 서비스에 종료 신호 전송
+                  _cameraService.closeDiagnosisAndExit();
+                  
+                  // 2. 잠시 대기 후 엘리홈으로 이동 (서버 응답을 기다리지 않고 즉시 이동)
+                  Future.delayed(const Duration(milliseconds: 500), () {
+                    if (mounted) {
+                      // 스트리밍 중지
+                      _cameraService.stopStreaming();
+                      // 엘리홈으로 이동
+                      Navigator.pushAndRemoveUntil(
+                        context,
+                        MaterialPageRoute(builder: (context) => const ElliHomeScreen()),
+                        (route) => false,
+                      );
+                    }
+                  });
                 },
                 child: Container(
                   width: 66 * scale,
@@ -357,5 +434,11 @@ class LiveScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+  
+  @override
+  void dispose() {
+    _cameraService.stopStreaming();
+    super.dispose();
   }
 }
