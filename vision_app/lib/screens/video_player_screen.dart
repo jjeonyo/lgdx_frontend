@@ -1,37 +1,74 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
+import 'package:video_player/video_player.dart';
 import 'video_player_overlay_screen.dart';
 
 class VideoPlayerScreen extends StatefulWidget {
-  const VideoPlayerScreen({super.key});
+  final String? videoUrl;
+
+  const VideoPlayerScreen({super.key, this.videoUrl});
 
   @override
   State<VideoPlayerScreen> createState() => _VideoPlayerScreenState();
 }
 
 class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
-  Timer? _timer;
+  VideoPlayerController? _controller;
+  bool _isInitialized = false;
 
   @override
   void initState() {
     super.initState();
-    // 5초 후 오버레이 화면으로 이동 (비디오 종료 시뮬레이션)
-    _timer = Timer(const Duration(seconds: 5), () {
-      if (mounted) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const VideoPlayerOverlayScreen()),
-        );
-      }
-    });
+    
+    // 비디오 URL이 있으면 컨트롤러 초기화
+    if (widget.videoUrl != null) {
+       // http로 시작하면 네트워크 URL, 아니면 로컬 에셋으로 처리
+       if (widget.videoUrl!.startsWith('http')) {
+         _controller = VideoPlayerController.networkUrl(Uri.parse(widget.videoUrl!));
+       } else {
+         _controller = VideoPlayerController.asset(widget.videoUrl!);
+       }
+
+       _controller!.initialize().then((_) {
+           setState(() {
+             _isInitialized = true;
+           });
+           _controller!.play();
+         }).catchError((error) {
+           print("Video initialization error: $error");
+           // 영상 로드 실패 시 잠시 후 오버레이로 이동
+           Future.delayed(const Duration(seconds: 2), _navigateToOverlay);
+         });
+       
+       _controller!.addListener(() {
+         if (_controller!.value.isInitialized &&
+             !_controller!.value.isPlaying &&
+             _controller!.value.position >= _controller!.value.duration) {
+           _navigateToOverlay();
+         }
+       });
+    } else {
+      // URL이 없는 경우 5초 후 이동 (테스트용)
+      Future.delayed(const Duration(seconds: 5), _navigateToOverlay);
+    }
+  }
+
+  void _navigateToOverlay() {
+    if (mounted) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => VideoPlayerOverlayScreen(videoUrl: widget.videoUrl)),
+      );
+    }
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _controller?.dispose();
     super.dispose();
   }
+
 
   // Figma 프레임 크기: 360x800
   static const double figmaWidth = 360;
@@ -107,8 +144,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 constraints: BoxConstraints(),
               ),
             ),
-            // 비디오 placeholder 영역
-            // Figma: top:80, left:0, width:360, height:672
+            // 비디오 영역
             Positioned(
               top: 80 * scale,
               left: 0,
@@ -124,13 +160,23 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                   ),
                   borderRadius: BorderRadius.circular(8 * scale),
                 ),
-                child: Center(
-                  child: Icon(
-                    Icons.videocam,
-                    size: 60 * scale,
-                    color: const Color(0xFFAFB1B6),
-                  ),
-                ),
+                child: _isInitialized && _controller != null
+                    ? ClipRRect(
+                        borderRadius: BorderRadius.circular(6 * scale),
+                        child: SizedBox.expand(
+                          child: FittedBox(
+                            fit: BoxFit.cover,
+                            child: SizedBox(
+                              width: _controller!.value.size.width,
+                              height: _controller!.value.size.height,
+                              child: VideoPlayer(_controller!),
+                            ),
+                          ),
+                        ),
+                      )
+                    : const Center(
+                        child: CircularProgressIndicator(),
+                      ),
               ),
             ),
           ],
