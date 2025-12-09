@@ -48,6 +48,23 @@ dependencies:
   video_player: ^2.10.1
 
 
+  # 1. 파이어베이스 (화면 갱신용)
+  firebase_core: ^3.0.0
+  cloud_firestore: ^5.0.0
+  
+  # 2. 스프링부트 통신 (질문 전송용)
+  http: ^1.0.0
+  
+  # 3. SVG 이미지 지원
+  flutter_svg: ^2.0.0
+  
+  # 4. 카메라 및 권한
+  camera: ^0.11.0+2
+  permission_handler: ^11.3.1
+  web_socket_channel: ^2.4.0
+  record: ^6.1.2
+  audioplayers: ^6.1.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -100,3 +117,5 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+  
