@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -40,7 +43,7 @@ class _LiveScreenState extends State<LiveScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // 상태바 스타일 설정 (Figma: #faf9fd 배경)
+    // 상태바 스타일 설정
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
       statusBarColor: Color(0xFFFAF9FD),
       statusBarIconBrightness: Brightness.dark,
@@ -56,53 +59,46 @@ class _LiveScreenState extends State<LiveScreen> {
     final scale = screenWidth / figmaWidth;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF3F1FB), // Rectangle 287 배경색
+      backgroundColor: const Color(0xFFF3F1FB),
       body: SizedBox(
         width: screenWidth,
         height: screenHeight,
         child: Stack(
           children: [
-            // Rectangle 287 배경 그라데이션 (전체 메인 콘텐츠 영역) - 피그마: h-[776px], 화면 하단까지 채움
-            // Figma: Rectangle 287, x=0, y=24, width=360, height=776
-            // 그라데이션: F3F1FB 42%, 7145F1 100%
+            // 배경 그라데이션
             Positioned(
               top: 24 * scale,
               left: 0,
               right: 0,
-              bottom: 0, // 화면 하단까지 채움
+              bottom: 0,
               child: Container(
                 decoration: const BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      Color(0xFFF3F1FB), // F3F1FB
-                      Color(0xFF7145F1), // 7145F1
+                      Color(0xFFF3F1FB),
+                      Color(0xFF7145F1),
                     ],
-                    stops: [0.42, 1.0], // F3F1FB 42%, 7145F1 100%
+                    stops: [0.42, 1.0],
                   ),
                 ),
               ),
             ),
-            // 상단 상태바 영역 (Status Bar/Android)
-            // Figma: height:24, 색상: #faf9fd
+            // 상단 상태바 영역
             Positioned(
               top: 0,
               left: 0,
               right: 0,
               height: 24 * scale,
-              child: Container(
-                color: const Color(0xFFFAF9FD),
-              ),
+              child: Container(color: const Color(0xFFFAF9FD)),
             ),
             // "실시간 진단" 텍스트와 빨간 점
-            // Figma: top:70, left:23
             Positioned(
               top: 70 * scale,
               left: 23 * scale,
               child: Row(
                 children: [
-                  // 빨간 점 (Ellipse 4765)
                   Container(
                     width: 9 * scale,
                     height: 9 * scale,
@@ -112,7 +108,6 @@ class _LiveScreenState extends State<LiveScreen> {
                     ),
                   ),
                   SizedBox(width: 10 * scale),
-                  // "실시간 진단" 텍스트
                   Text(
                     '실시간 진단',
                     style: TextStyle(
@@ -206,7 +201,6 @@ class _LiveScreenState extends State<LiveScreen> {
               ),
             ),
             // 왼쪽 하단 캐릭터 이미지
-            // Figma: top:509, left:19, width:95, height:143
             Positioned(
               top: 509 * scale,
               left: 19 * scale,
@@ -301,11 +295,10 @@ class _LiveScreenState extends State<LiveScreen> {
                 ),
               ),
             ),
-            // 두 번째 버튼 (Rectangle 290): Frame 내부 x=90, y=0, width=66, height=44
-            // 재생 버튼 이미지 사용
+            // 두 번째 버튼 (재생)
             Positioned(
               top: 687 * scale,
-              left: 147 * scale, // 57 + 90 = 147
+              left: 147 * scale,
               child: Container(
                 width: 66 * scale,
                 height: 44 * scale,
@@ -330,10 +323,7 @@ class _LiveScreenState extends State<LiveScreen> {
                       return Container(
                         width: 66 * scale,
                         height: 44 * scale,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF29344E).withValues(alpha: 0.54),
-                          borderRadius: BorderRadius.circular(19.5 * scale),
-                        ),
+                        color: const Color(0xFF29344E).withValues(alpha: 0.54),
                       );
                     },
                   ),
@@ -344,7 +334,7 @@ class _LiveScreenState extends State<LiveScreen> {
             // X 버튼: 진단 화면 종료 및 엘리홈으로 이동
             Positioned(
               top: 687 * scale,
-              left: 237 * scale, // 57 + 180 = 237
+              left: 237 * scale,
               child: GestureDetector(
                 onTap: () {
                   // 카메라가 작동 중인지 확인
