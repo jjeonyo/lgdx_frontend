@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'dart:io';
 import 'package:http/http.dart' as http;
+import '../config/api_config.dart';
 import 'video_production_screen.dart';
 import 'chat_screen.dart';
 import 'elli_home_screen.dart';
@@ -270,8 +272,7 @@ class LiveScreenWithButtons extends StatelessWidget {
                       onTap: () async {
                         // 1. 백엔드 실행 요청 (비동기, 결과 기다리지 않음 또는 필요시 await)
                         try {
-                          // 로컬 백엔드 서버 주소 (iOS 시뮬레이터는 localhost, 안드로이드는 10.0.2.2)
-                          final url = Uri.parse('http://127.0.0.1:8000/generate-video');
+                          final url = Uri.parse('${ApiConfig.baseUrl}/generate-video');
                           http.post(url).then((response) {
                             print("Generation trigger response: ${response.statusCode}");
                           }).catchError((error) {

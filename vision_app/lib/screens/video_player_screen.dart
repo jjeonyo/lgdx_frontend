@@ -23,16 +23,28 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     
     // 비디오 URL이 있으면 컨트롤러 초기화
     if (widget.videoUrl != null) {
-       _controller = VideoPlayerController.networkUrl(Uri.parse(widget.videoUrl!))
-         ..initialize().then((_) {
+       // http로 시작하면 네트워크 URL, 아니면 로컬 에셋으로 처리
+       if (widget.videoUrl!.startsWith('http')) {
+         _controller = VideoPlayerController.networkUrl(Uri.parse(widget.videoUrl!));
+       } else {
+         _controller = VideoPlayerController.asset(widget.videoUrl!);
+       }
+
+       _controller!.initialize().then((_) {
            setState(() {
              _isInitialized = true;
            });
            _controller!.play();
+         }).catchError((error) {
+           print("Video initialization error: $error");
+           // 영상 로드 실패 시 잠시 후 오버레이로 이동
+           Future.delayed(const Duration(seconds: 2), _navigateToOverlay);
          });
        
        _controller!.addListener(() {
-         if (_controller!.value.position >= _controller!.value.duration) {
+         if (_controller!.value.isInitialized &&
+             !_controller!.value.isPlaying &&
+             _controller!.value.position >= _controller!.value.duration) {
            _navigateToOverlay();
          }
        });
@@ -46,7 +58,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     if (mounted) {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => const VideoPlayerOverlayScreen()),
+        MaterialPageRoute(builder: (context) => VideoPlayerOverlayScreen(videoUrl: widget.videoUrl)),
       );
     }
   }
@@ -152,9 +164,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 child: _isInitialized && _controller != null
                     ? ClipRRect(
                         borderRadius: BorderRadius.circular(6 * scale),
-                        child: AspectRatio(
-                          aspectRatio: _controller!.value.aspectRatio,
-                          child: VideoPlayer(_controller!),
+                        child: SizedBox.expand(
+                          child: FittedBox(
+                            fit: BoxFit.cover,
+                            child: SizedBox(
+                              width: _controller!.value.size.width,
+                              height: _controller!.value.size.height,
+                              child: VideoPlayer(_controller!),
+                            ),
+                          ),
                         ),
                       )
                     : const Center(

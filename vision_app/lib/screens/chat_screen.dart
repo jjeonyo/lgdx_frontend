@@ -1,7 +1,9 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
+import '../config/api_config.dart';
 import 'live_screen.dart';
 import 'live_screen_with_buttons.dart';
 import 'video_production_screen.dart';
@@ -23,15 +25,61 @@ class _ChatScreenState extends State<ChatScreen> {
   final List<Map<String, String>> _messages = []; // 'sender', 'text'
   bool _isLoading = false;
 
-  // 백엔드 API URL (Android Emulator: 10.0.2.2, iOS Simulator: 127.0.0.1, Real Device: IP Address)
-  // 사용자의 환경에 맞게 수정 필요
-  final String _apiUrl = 'http://127.0.0.1:8000/chat';
+  // 백엔드 API URL
+  String get _baseUrl => ApiConfig.baseUrl;
+  String get _apiUrl => '$_baseUrl/chat';
 
   @override
   void initState() {
     super.initState();
-    // 초기 환영 메시지
-    _addMessage('ai', '안녕하세요! LG전자 가전제품 전문 상담원 ThinQ 봇입니다.\n무엇을 도와드릴까요?');
+    // 서버에서 채팅 기록 불러오기
+    _fetchChatHistory();
+  }
+
+  Future<void> _fetchChatHistory() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      // API 호출 (GET /chat/history)
+      final response = await http.get(
+        Uri.parse('$_baseUrl/chat/history?user_id=test_user'),
+      );
+
+      if (response.statusCode == 200) {
+        final decodedBody = utf8.decode(response.bodyBytes);
+        final data = jsonDecode(decodedBody);
+        final List<dynamic> history = data['messages'] ?? [];
+
+        if (history.isNotEmpty) {
+          setState(() {
+            _messages.clear();
+            for (var msg in history) {
+              _messages.add({
+                'sender': msg['sender'] ?? 'ai',
+                'text': msg['text'] ?? msg['content'] ?? '',
+              });
+            }
+          });
+          // 화면이 그려진 후 스크롤 이동
+          _scrollToBottom();
+        } else {
+          // 기록이 없으면 기본 환영 메시지
+          _addMessage('ai', '안녕하세요! LG전자 가전제품 전문 상담원 ThinQ 봇입니다.\n무엇을 도와드릴까요?');
+        }
+      } else {
+        print('History fetch failed: ${response.statusCode}');
+        _addMessage('ai', '안녕하세요! LG전자 가전제품 전문 상담원 ThinQ 봇입니다.\n무엇을 도와드릴까요?');
+      }
+    } catch (e) {
+      print('History fetch error: $e');
+      _addMessage('ai', '안녕하세요! LG전자 가전제품 전문 상담원 ThinQ 봇입니다.\n무엇을 도와드릴까요?');
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
 
   void _addMessage(String sender, String text) {
@@ -251,7 +299,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                               // 1. 백엔드 실행 요청 (비동기)
                                               try {
                                                 final url = Uri.parse(
-                                                    'http://192.168.0.202:8000/generate-video');
+                                                    '$_baseUrl/generate-video');
                                                 http.post(url).then((response) {
                                                   print(
                                                       "Generation trigger response: ${response.statusCode}");
