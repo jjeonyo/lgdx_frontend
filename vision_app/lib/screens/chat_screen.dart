@@ -11,6 +11,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../models/chat_message.dart';
 import '../services/api_service.dart';
+import 'live_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -240,6 +241,52 @@ class _ChatScreenState extends State<ChatScreen> {
     _scrollController.dispose();
     _textFieldFocusNode.dispose();
     super.dispose();
+  }
+
+  // AI 응답 후 동영상 안내 메시지 저장
+  Future<void> _saveVideoMessage() async {
+    try {
+      const videoMessage = "지금까지 대화 나눈 내용을 바탕으로 ai 기반 문제 해결 영상을 보고 싶다면 오른쪽 위에 동영상 버튼을 눌러주세요";
+      
+      // 마지막 메시지만 확인: 마지막 메시지가 동영상 안내 메시지가 아닐 때만 추가
+      final messagesSnapshot = await _firestore
+          .collection(_chatRoomsCollection)
+          .doc(_roomId)
+          .collection(_messagesSubcollection)
+          .orderBy('timestamp', descending: true)
+          .limit(1)
+          .get();
+      
+      // 마지막 메시지가 동영상 안내 메시지인지 확인
+      if (messagesSnapshot.docs.isNotEmpty) {
+        final lastMessage = messagesSnapshot.docs.first.data();
+        if (lastMessage['text'] == videoMessage) {
+          print('ℹ️ [ChatScreen] 마지막 메시지가 이미 동영상 안내 메시지입니다. 중복 저장을 건너뜁니다.');
+          return;
+        }
+      }
+      
+      // timestamp를 "2025-12-07 00:43:59" 형식으로 포맷
+      final now = DateTime.now().toLocal();
+      final formattedTimestamp = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
+      
+      final messageData = {
+        'text': videoMessage,
+        'sender': 'ai',
+        'message_type': 'chat',
+        'timestamp': formattedTimestamp,
+      };
+      
+      await _firestore
+          .collection(_chatRoomsCollection)
+          .doc(_roomId)
+          .collection(_messagesSubcollection)
+          .add(messageData);
+      
+      print('✅ [ChatScreen] 동영상 안내 메시지 저장 완료');
+    } catch (e) {
+      print('❌ [ChatScreen] 동영상 안내 메시지 저장 실패: $e');
+    }
   }
 
   // 메시지 전송
@@ -744,6 +791,51 @@ class _ChatScreenState extends State<ChatScreen> {
                 print('✅ [ChatScreen] 로딩 상태 해제 완료');
               }
             });
+            
+            // AI 응답이 완전히 저장된 후에만 추가 메시지 저장 (약간의 지연 후 확인)
+            Future.delayed(const Duration(milliseconds: 1000), () async {
+              if (!mounted) return;
+              
+              // 다시 한 번 확인: 마지막 메시지가 AI 응답이고 동영상 안내 메시지가 아닌지 확인
+              try {
+                final messagesSnapshot = await _firestore
+                    .collection(_chatRoomsCollection)
+                    .doc(_roomId)
+                    .collection(_messagesSubcollection)
+                    .orderBy('timestamp', descending: true)
+                    .limit(2)
+                    .get();
+                
+                if (messagesSnapshot.docs.isEmpty) {
+                  print('⚠️ [ChatScreen] 메시지가 없어 동영상 안내 메시지를 저장하지 않습니다.');
+                  return;
+                }
+                
+                final lastMessage = messagesSnapshot.docs[0].data();
+                const videoMessage = "지금까지 대화 나눈 내용을 바탕으로 ai 기반 문제 해결 영상을 보고 싶다면 오른쪽 위에 동영상 버튼을 눌러주세요";
+                
+                // 마지막 메시지가 AI 응답이고, 동영상 안내 메시지가 아닌 경우에만 추가
+                if (lastMessage['sender'] == 'ai' && lastMessage['text'] != videoMessage) {
+                  // 두 번째 마지막 메시지도 확인 (중복 방지)
+                  if (messagesSnapshot.docs.length >= 2) {
+                    final secondLastMessage = messagesSnapshot.docs[1].data();
+                    // 두 번째 마지막 메시지가 동영상 안내 메시지가 아닌 경우에만 추가
+                    if (secondLastMessage['text'] != videoMessage) {
+                      await _saveVideoMessage();
+                    } else {
+                      print('ℹ️ [ChatScreen] 동영상 안내 메시지가 이미 있어 건너뜁니다.');
+                    }
+                  } else {
+                    // 메시지가 하나만 있는 경우 (AI 응답만 있는 경우)
+                    await _saveVideoMessage();
+                  }
+                } else {
+                  print('ℹ️ [ChatScreen] 마지막 메시지가 AI 응답이 아니거나 이미 동영상 안내 메시지입니다.');
+                }
+              } catch (e) {
+                print('❌ [ChatScreen] 동영상 안내 메시지 저장 확인 중 오류: $e');
+              }
+            });
           } else {
             print('⏳ [ChatScreen] 아직 AI 답변 없음 - 로딩 인디케이터 계속 표시');
           }
@@ -1071,10 +1163,13 @@ class _ChatScreenState extends State<ChatScreen> {
                   // 오른쪽 아이콘들 (Figma 디자인: interface-dashboard, play-list, menu)
                   Row(
                     children: [
-                      // chat_room3 아이콘 (대시보드/레이아웃)
+                      // chat_room3 아이콘 (라이브 화면으로 이동)
                       GestureDetector(
                         onTap: () {
-                          // 대시보드 아이콘 클릭 이벤트 (필요시 구현)
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const LiveScreen()),
+                          );
                         },
                         child: SvgPicture.asset(
                           'assets/images/chat_room3.svg',
@@ -1149,16 +1244,20 @@ class _ChatScreenState extends State<ChatScreen> {
                     });
                   },
                   child: Container(
-                    height: 46,
+                    constraints: const BoxConstraints(
+                      minHeight: 46,
+                      maxHeight: 200, // 최대 높이 제한 (약 8-9줄)
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFFF4F2FD), // 연한 보라색 배경
                       borderRadius: BorderRadius.circular(23),
                     ),
                     child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.end, // 하단 정렬
                       children: [
                         // 카메라 아이콘
                         Padding(
-                          padding: const EdgeInsets.only(left: 16.18, right: 8),
+                          padding: const EdgeInsets.only(left: 16.18, right: 8, bottom: 6),
                           child: GestureDetector(
                             onTap: () {
                               // 카메라 기능 (나중에 구현)
@@ -1285,17 +1384,23 @@ class _ChatScreenState extends State<ChatScreen> {
                               color: Colors.black,
                               height: 1.5,
                             ),
-                            maxLines: null,
-                            textInputAction: TextInputAction.send,
-                            keyboardType: TextInputType.text, // 텍스트 키보드 명시
+                            minLines: 1, // 최소 1줄
+                            maxLines: 8, // 최대 8줄 (200px 제한과 맞춤)
+                            textInputAction: TextInputAction.newline, // 여러 줄 입력 가능
+                            keyboardType: TextInputType.multiline, // 여러 줄 입력 허용
                             onSubmitted: (value) {
-                              print('🔵 [Flutter] 키보드 전송 버튼 클릭됨');
-                              // 키보드 전송 버튼 클릭 시에도 중복 방지 로직이 적용됨
-                              _sendMessage();
+                              // 여러 줄 입력 시에는 전송하지 않음 (Enter만 눌렀을 때)
+                              // 전송은 전송 버튼으로만 가능
                             },
                             onTap: () {
                               // TextField 직접 클릭 시에도 포커스
                               _textFieldFocusNode.requestFocus();
+                            },
+                            onChanged: (value) {
+                              // 텍스트 변경 시 스크롤하여 입력 중인 내용이 보이도록
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                _scrollToBottom();
+                              });
                             },
                           ),
                         ),
@@ -1305,7 +1410,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       ),
                         // 전송 버튼 (보라색 종이비행기 아이콘)
                         Padding(
-                          padding: const EdgeInsets.only(right: 16.06),
+                          padding: const EdgeInsets.only(right: 16.06, bottom: 6),
                           child: GestureDetector(
                             onTap: _isSending 
                                 ? () {

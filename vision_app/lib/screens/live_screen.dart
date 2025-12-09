@@ -6,12 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:camera/camera.dart';
-import 'package:web_socket_channel/web_socket_channel.dart';
-import 'package:permission_handler/permission_handler.dart';
-import 'package:flutter_sound/flutter_sound.dart';
-import 'package:image/image.dart' as img;
-import 'package:audio_session/audio_session.dart';
-import 'live_screen_with_buttons.dart';
 import 'chat_screen.dart';
 import 'customer_service_screen.dart';
 import 'elli_home_screen.dart';
@@ -607,44 +601,11 @@ class _LiveScreenState extends State<LiveScreen> {
                 },
               ),
             ),
-            // 말풍선
-            Positioned(
-              top: 509 * scale,
-              left: (19 + 95 + 10) * scale,
-              child: GestureDetector(
-                onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (context) => const LiveScreenWithButtons())),
-                child: Container(
-                  width: 223 * scale,
-                  height: 80 * scale,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFD9D9D9).withValues(alpha: 0.49),
-                    borderRadius: BorderRadius.circular(15 * scale),
-                  ),
-                  padding: EdgeInsets.symmetric(
-                    horizontal: 32 * scale,
-                    vertical: 22 * scale,
-                  ),
-                  child: Center(
-                    child: Text(
-                      _aiResponseText,
-                      style: TextStyle(
-                        fontFamily: 'Noto Sans',
-                        fontSize: 13 * scale,
-                        fontWeight: FontWeight.w400,
-                        color: Colors.black,
-                        letterSpacing: 0.2 * scale,
-                        height: 17.706 / 13,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            // 하단 컨트롤 버튼들
+            // 말풍선 제거됨 (사용자 요청)
+            // 하단 컨트롤 버튼들 (3개)
+            // Figma: Frame 1686558300, x=57, y=687, width=246, height=44
+            // shadow: 0px_4px_4px_0px_rgba(0,0,0,0.25)
+            // 첫 번째 버튼 (Rectangle 34627593): Frame 내부 x=0, y=0, width=66, height=44
             Positioned(
               top: 687 * scale,
               left: 57 * scale,
@@ -758,22 +719,28 @@ class _LiveScreenState extends State<LiveScreen> {
               left: 237 * scale,
               child: GestureDetector(
                 onTap: () {
-                  // 1. WebSocket 서비스에 종료 신호 전송
-                  _cameraService.closeDiagnosisAndExit();
+                  // 카메라가 작동 중인지 확인
+                  final isCameraWorking = _cameraService.cameraController != null &&
+                      _cameraService.cameraController!.value.isInitialized &&
+                      _isStreaming;
                   
-                  // 2. 잠시 대기 후 엘리홈으로 이동 (서버 응답을 기다리지 않고 즉시 이동)
-                  Future.delayed(const Duration(milliseconds: 500), () {
-                    if (mounted) {
-                      // 스트리밍 중지
-                      _cameraService.stopStreaming();
-                      // 엘리홈으로 이동
-                      Navigator.pushAndRemoveUntil(
-                        context,
-                        MaterialPageRoute(builder: (context) => const ElliHomeScreen()),
-                        (route) => false,
-                      );
-                    }
-                  });
+                  if (isCameraWorking) {
+                    // 카메라가 작동 중이면 팝업 표시
+                    _showProblemSolvedDialog(context, scale);
+                  } else {
+                    // 카메라가 작동하지 않으면 바로 홈으로 이동
+                    _cameraService.closeDiagnosisAndExit();
+                    Future.delayed(const Duration(milliseconds: 500), () {
+                      if (mounted) {
+                        _cameraService.stopStreaming();
+                        Navigator.pushAndRemoveUntil(
+                          context,
+                          MaterialPageRoute(builder: (context) => const ElliHomeScreen()),
+                          (route) => false,
+                        );
+                      }
+                    });
+                  }
                 },
                 child: Container(
                   width: 66 * scale,
@@ -804,7 +771,326 @@ class _LiveScreenState extends State<LiveScreen> {
       ),
     );
   }
-}
+  
+  // "문제가 해결되셨나요?" 팝업 다이얼로그
+  void _showProblemSolvedDialog(BuildContext context, double scale) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.4), // 반투명 어두운 배경
+      barrierDismissible: false, // 배경 탭으로 닫기 불가
+      builder: (BuildContext dialogContext) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: EdgeInsets.symmetric(horizontal: 25.25 * scale),
+          child: Stack(
+            children: [
+              // 카메라 화면이 멈춘 것처럼 보이는 배경 (반투명 오버레이)
+              Positioned.fill(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.4),
+                    borderRadius: BorderRadius.circular(17.61 * scale),
+                  ),
+                  child: _cameraService.cameraController != null &&
+                          _cameraService.cameraController!.value.isInitialized
+                      ? ClipRRect(
+                          borderRadius: BorderRadius.circular(17.61 * scale),
+                          child: CameraPreview(_cameraService.cameraController!),
+                        )
+                      : Container(),
+                ),
+              ),
+              // 팝업 컨텐츠
+              Container(
+                width: 262.97 * scale,
+                height: 311.103 * scale,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(17.61 * scale),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.25),
+                      blurRadius: 3.483 * scale,
+                      offset: Offset(0, 3.483 * scale),
+                    ),
+                  ],
+                ),
+                child: Stack(
+                  children: [
+                    // X 버튼 (우측 상단)
+                    Positioned(
+                      top: 12 * scale,
+                      right: 12 * scale,
+                      child: GestureDetector(
+                        onTap: () {
+                          Navigator.of(dialogContext).pop();
+                        },
+                        child: Builder(
+                          builder: (context) {
+                            try {
+                              return Image.asset(
+                                'assets/images/문제가해결되셨나요x버튼.png',
+                                width: 20.898 * scale,
+                                height: 20.898 * scale,
+                                fit: BoxFit.contain,
+                                errorBuilder: (context, error, stackTrace) {
+                                  print("❌ [LiveScreen] X 버튼 이미지 로드 실패: $error");
+                                  print("❌ [LiveScreen] 스택 트레이스: $stackTrace");
+                                  print("❌ [LiveScreen] 경로: assets/images/문제가해결되셨나요x버튼.png");
+                                  return Container(
+                                    width: 20.898 * scale,
+                                    height: 20.898 * scale,
+                                    decoration: BoxDecoration(
+                                      color: Colors.black,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Icon(
+                                      Icons.close,
+                                      size: 16 * scale,
+                                      color: Colors.white,
+                                    ),
+                                  );
+                                },
+                              );
+                            } catch (e) {
+                              print("❌ [LiveScreen] X 버튼 이미지 로드 예외: $e");
+                              return Container(
+                                width: 20.898 * scale,
+                                height: 20.898 * scale,
+                                decoration: BoxDecoration(
+                                  color: Colors.black,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  Icons.close,
+                                  size: 16 * scale,
+                                  color: Colors.white,
+                                ),
+                              );
+                            }
+                          },
+                        ),
+                      ),
+                    ),
+                    // 펭귄 이미지 (가운데 정렬)
+                    Positioned(
+                      top: 26.99 * scale,
+                      left: 0,
+                      right: 0,
+                      child: Center(
+                        child: Builder(
+                          builder: (context) {
+                            try {
+                              return Image.asset(
+                                'assets/images/문제가_해결되셨나요펭귄.png',
+                                width: 76.603 * scale,
+                                height: 114.976 * scale,
+                                fit: BoxFit.contain,
+                                errorBuilder: (context, error, stackTrace) {
+                                  print("❌ [LiveScreen] 펭귄 이미지 로드 실패: $error");
+                                  print("❌ [LiveScreen] 스택 트레이스: $stackTrace");
+                                  print("❌ [LiveScreen] 경로: assets/images/문제가_해결되셨나요펭귄.png");
+                                  return Container(
+                                    width: 76.603 * scale,
+                                    height: 114.976 * scale,
+                                    color: Colors.grey.withValues(alpha: 0.3),
+                                    child: Icon(Icons.pets, size: 40 * scale, color: Colors.grey),
+                                  );
+                                },
+                              );
+                            } catch (e) {
+                              print("❌ [LiveScreen] 펭귄 이미지 로드 예외: $e");
+                              return Container(
+                                width: 76.603 * scale,
+                                height: 114.976 * scale,
+                                color: Colors.grey.withValues(alpha: 0.3),
+                                child: Icon(Icons.pets, size: 40 * scale, color: Colors.grey),
+                              );
+                            }
+                          },
+                        ),
+                      ),
+                    ),
+                    // "문제가 해결되셨나요?" 텍스트
+                    Positioned(
+                      top: 164.61 * scale,
+                      left: 0,
+                      right: 0,
+                      child: Center(
+                        child: RichText(
+                          textAlign: TextAlign.center,
+                          text: TextSpan(
+                            style: TextStyle(
+                              fontFamily: 'Noto Sans',
+                              fontSize: 13.932 * scale,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black,
+                              letterSpacing: -0.6966 * scale,
+                            ),
+                            children: [
+                              const TextSpan(text: '문제가 '),
+                              TextSpan(
+                                text: '해결',
+                                style: TextStyle(color: const Color(0xFF6F42EE)),
+                              ),
+                              const TextSpan(text: '되셨나요?'),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    // 설명 텍스트
+                    Positioned(
+                      top: 200.21 * scale,
+                      left: 0,
+                      right: 0,
+                      child: Center(
+                        child: Text(
+                          '추가로 문의하고 싶은게 있으시면\n제게 채팅해주세요!',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontFamily: 'Noto Sans',
+                            fontSize: 10.449 * scale,
+                            fontWeight: FontWeight.normal,
+                            color: const Color(0xFF9A9A9A),
+                            letterSpacing: -0.209 * scale,
+                            height: 1.5,
+                          ),
+                        ),
+                      ),
+                    ),
+                    // 버튼들 (가운데 정렬)
+                    Positioned(
+                      top: 241.2 * scale,
+                      left: 0,
+                      right: 0,
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 20 * scale),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            // 채팅하기 버튼
+                            Flexible(
+                              flex: 1,
+                              child: GestureDetector(
+                                onTap: () {
+                                  Navigator.of(dialogContext).pop();
+                                  _cameraService.closeDiagnosisAndExit();
+                                  Future.delayed(const Duration(milliseconds: 300), () {
+                                    if (mounted) {
+                                      _cameraService.stopStreaming();
+                                      Navigator.pushAndRemoveUntil(
+                                        context,
+                                        MaterialPageRoute(builder: (context) => const ChatScreen()),
+                                        (route) => false,
+                                      );
+                                    }
+                                  });
+                                },
+                                child: Image.asset(
+                                  'assets/images/문제가해결되셨나요채팅하기버튼.png',
+                                  width: double.infinity,
+                                  height: 87 * scale,
+                                  fit: BoxFit.contain,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return Container(
+                                      width: double.infinity,
+                                      height: 87 * scale,
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF6F42EE),
+                                        borderRadius: BorderRadius.circular(40 * scale),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black.withValues(alpha: 0.13),
+                                            blurRadius: 19.157 * scale,
+                                            offset: Offset(2.612 * scale, 2.612 * scale),
+                                          ),
+                                        ],
+                                      ),
+                                      child: Center(
+                                        child: Text(
+                                          '채팅 하기',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 13.93 * scale,
+                                            fontWeight: FontWeight.normal,
+                                            letterSpacing: -0.6965 * scale,
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ),
+                            SizedBox(width: 5.2 * scale), // gap-[13.061px] reduced by 2.5x
+                            // 종료하기 버튼
+                            Flexible(
+                              flex: 1,
+                              child: GestureDetector(
+                                onTap: () {
+                                  Navigator.of(dialogContext).pop();
+                                  _cameraService.closeDiagnosisAndExit();
+                                  Future.delayed(const Duration(milliseconds: 300), () {
+                                    if (mounted) {
+                                      _cameraService.stopStreaming();
+                                      Navigator.pushAndRemoveUntil(
+                                        context,
+                                        MaterialPageRoute(builder: (context) => const ElliHomeScreen()),
+                                        (route) => false,
+                                      );
+                                    }
+                                  });
+                                },
+                                child: Image.asset(
+                                  'assets/images/문제해결되셨나요종료하기버튼.png',
+                                  width: double.infinity,
+                                  height: 87 * scale,
+                                  fit: BoxFit.contain,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return Container(
+                                      width: double.infinity,
+                                      height: 87 * scale,
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFF2F0FF),
+                                        borderRadius: BorderRadius.circular(40 * scale),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black.withValues(alpha: 0.13),
+                                            blurRadius: 19.157 * scale,
+                                            offset: Offset(2.612 * scale, 2.612 * scale),
+                                          ),
+                                        ],
+                                      ),
+                                      child: Center(
+                                        child: Text(
+                                          '종료하기',
+                                          style: TextStyle(
+                                            color: const Color(0xFF6F42EE),
+                                            fontSize: 13.93 * scale,
+                                            fontWeight: FontWeight.normal,
+                                            letterSpacing: -0.6965 * scale,
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
   
   @override
   void dispose() {
