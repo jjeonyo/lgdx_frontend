@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
+import '../config/api_config.dart';
 import 'video_player_screen.dart';
 
 class VideoProductionScreen extends StatefulWidget {
@@ -14,12 +16,17 @@ class VideoProductionScreen extends StatefulWidget {
 
 class _VideoProductionScreenState extends State<VideoProductionScreen> {
   Timer? _pollingTimer;
-  // 백엔드 상태 확인 URL (Android Emulator: 10.0.2.2, iOS Simulator: 127.0.0.1)
-  final String _checkStatusUrl = 'http://127.0.0.1:8000/check-video-status';
+  // 백엔드 상태 확인 URL
+  String get _checkStatusUrl => '${ApiConfig.baseUrl}/check-video-status';
+  
+  // 로딩 화면 최소 유지 시간을 위한 변수
+  late DateTime _startTime;
+  static const Duration _minLoadingTime = Duration(seconds: 4);
 
   @override
   void initState() {
     super.initState();
+    _startTime = DateTime.now(); // 시작 시간 기록
     _startPolling();
   }
 
@@ -28,6 +35,53 @@ class _VideoProductionScreenState extends State<VideoProductionScreen> {
     _pollingTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
       await _checkVideoStatus();
     });
+  }
+
+  Future<void> _navigateWithDelay(Widget nextScreen) async {
+    _pollingTimer?.cancel();
+    
+    // 최소 로딩 시간 보장
+    final elapsedTime = DateTime.now().difference(_startTime);
+    if (elapsedTime < _minLoadingTime) {
+      await Future.delayed(_minLoadingTime - elapsedTime);
+    }
+
+    if (mounted) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => nextScreen,
+        ),
+      );
+    }
+  }
+
+  void _handleFailure() async {
+    _pollingTimer?.cancel();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('영상 생성 실패. 기본 영상을 재생합니다.'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      
+      // 에러 메시지를 볼 수 있도록 조금 더 기다림
+      await Future.delayed(const Duration(seconds: 2));
+
+      // 실패 시 기본 영상 재생 (예제 URL 또는 로컬 에셋)
+      // 로컬 에셋 사용
+      const fallbackUrl = 'assets/videos/default_video.mp4';
+      
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const VideoPlayerScreen(videoUrl: fallbackUrl),
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _checkVideoStatus() async {
@@ -39,28 +93,48 @@ class _VideoProductionScreenState extends State<VideoProductionScreen> {
         final status = data['status']; // 'processing', 'completed', 'failed'
         
         if (status == 'completed') {
-          _pollingTimer?.cancel();
-          final videoUrl = data['video_url']; // 생성된 비디오 URL
+          String videoUrl = data['video_url']; // 생성된 비디오 URL
           
-          if (mounted) {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(
-                builder: (context) => VideoPlayerScreen(videoUrl: videoUrl),
-              ),
-            );
+          // 상대 경로인 경우 base URL 추가
+          if (!videoUrl.startsWith('http')) {
+            // URL이 /로 시작하지 않으면 추가
+            if (!videoUrl.startsWith('/')) {
+              videoUrl = '/$videoUrl';
+            }
+            videoUrl = '${ApiConfig.baseUrl}$videoUrl';
           }
+          
+          await _navigateWithDelay(VideoPlayerScreen(videoUrl: videoUrl));
         } else if (status == 'failed') {
-           _pollingTimer?.cancel();
-           if (mounted) {
-             ScaffoldMessenger.of(context).showSnackBar(
-               const SnackBar(content: Text('영상 생성에 실패했습니다.')),
-             );
-             Navigator.pop(context);
-           }
+          _handleFailure();
+        }
+      } else {
+        // 상태 코드가 200이 아닌 경우
+        print("Status check failed: ${response.statusCode}");
+        
+        // 서버에서 명시적인 에러 메시지가 오는 경우 실패 처리
+        // 예: Quota Exceeded, Rate Limit, 429 등
+        if (response.statusCode == 429 || 
+            response.body.contains('RESOURCE_EXHAUSTED') || 
+            response.body.contains('quota')) {
+          print("Critical error detected: ${response.body}");
+          _handleFailure();
+        } else {
+          // 500 Internal Server Error 등 기타 서버 오류 발생 시에도 실패 처리하지 않고 로그만 출력
+          // (긴 작업 중 일시적 타임아웃 등은 무시하고 계속 폴링)
+          print("Server status code: ${response.statusCode}");
+          
+          // 하지만 명시적인 Quota 에러는 실패 처리
+          if (response.statusCode == 429 || 
+              response.body.contains('RESOURCE_EXHAUSTED') || 
+              response.body.contains('quota')) {
+            print("Critical error detected: ${response.body}");
+            _handleFailure();
+          }
         }
       }
     } catch (e) {
+      // 네트워크 오류 등 - 로그만 출력하고 계속 재시도
       print("Error checking status: $e");
     }
   }

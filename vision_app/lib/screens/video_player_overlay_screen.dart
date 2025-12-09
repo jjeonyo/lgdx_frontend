@@ -4,8 +4,12 @@ import 'dart:async';
 import 'achievement_screen.dart';
 import 'chat_screen.dart';
 
+import 'package:video_player/video_player.dart';
+import 'video_player_screen.dart';
+
 class VideoPlayerOverlayScreen extends StatefulWidget {
-  const VideoPlayerOverlayScreen({super.key});
+  final String? videoUrl;
+  const VideoPlayerOverlayScreen({super.key, this.videoUrl});
 
   @override
   State<VideoPlayerOverlayScreen> createState() => _VideoPlayerOverlayScreenState();
@@ -14,10 +18,31 @@ class VideoPlayerOverlayScreen extends StatefulWidget {
 class _VideoPlayerOverlayScreenState extends State<VideoPlayerOverlayScreen> {
   bool _showPopup = false;
   Timer? _timer;
+  VideoPlayerController? _controller;
+  bool _isInitialized = false;
 
   @override
   void initState() {
     super.initState();
+    
+    // 비디오 썸네일(첫 프레임)을 배경으로 보여주기 위해 컨트롤러 초기화
+    if (widget.videoUrl != null) {
+      if (widget.videoUrl!.startsWith('http')) {
+        _controller = VideoPlayerController.networkUrl(Uri.parse(widget.videoUrl!));
+      } else {
+        _controller = VideoPlayerController.asset(widget.videoUrl!);
+      }
+
+      _controller!.initialize().then((_) {
+        setState(() {
+          _isInitialized = true;
+        });
+        // 첫 프레임으로 이동하여 멈춤 (썸네일 역할)
+        _controller!.seekTo(Duration.zero);
+        _controller!.pause();
+      });
+    }
+
     // 5초 후 팝업 표시
     _timer = Timer(const Duration(seconds: 5), () {
       if (mounted) {
@@ -31,6 +56,7 @@ class _VideoPlayerOverlayScreenState extends State<VideoPlayerOverlayScreen> {
   @override
   void dispose() {
     _timer?.cancel();
+    _controller?.dispose();
     super.dispose();
   }
 
@@ -62,9 +88,7 @@ class _VideoPlayerOverlayScreenState extends State<VideoPlayerOverlayScreen> {
         height: screenHeight,
         child: Stack(
           children: [
-            // Rectangle 287 배경 그라데이션 (전체 메인 콘텐츠 영역) - 피그마: h-[776px], 화면 하단까지 채움
-            // Figma: Rectangle 287, x=0, y=24, width=360, height=776
-            // 그라데이션: F3F1FB 42%, 7145F1 100%
+            // 1. Rectangle 287 배경 그라데이션 (전체 메인 콘텐츠 영역)
             Positioned(
               top: 24 * scale,
               left: 0,
@@ -84,8 +108,7 @@ class _VideoPlayerOverlayScreenState extends State<VideoPlayerOverlayScreen> {
                 ),
               ),
             ),
-            // 상단 상태바 영역 (Status Bar/Android)
-            // Figma: height:24, 색상: #faf9fd
+            // 2. 상단 상태바 영역 (Status Bar/Android)
             Positioned(
               top: 0,
               left: 0,
@@ -95,8 +118,7 @@ class _VideoPlayerOverlayScreenState extends State<VideoPlayerOverlayScreen> {
                 color: const Color(0xFFFAF9FD),
               ),
             ),
-            // 뒤로가기 버튼
-            // Figma: top:40, left:12, width:24, height:24
+            // 3. 뒤로가기 버튼
             Positioned(
               top: 40 * scale,
               left: 12 * scale,
@@ -109,8 +131,7 @@ class _VideoPlayerOverlayScreenState extends State<VideoPlayerOverlayScreen> {
                 constraints: BoxConstraints(),
               ),
             ),
-            // 비디오 placeholder 영역
-            // Figma: top:80, left:0, width:360, height:672
+            // 4. 비디오 썸네일 및 오버레이 (비디오 영역 내에 위치)
             Positioned(
               top: 80 * scale,
               left: 0,
@@ -119,60 +140,73 @@ class _VideoPlayerOverlayScreenState extends State<VideoPlayerOverlayScreen> {
               child: Container(
                 margin: EdgeInsets.symmetric(horizontal: 0),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFEFEFF0),
+                  // 비디오 플레이어 화면과 동일한 컨테이너 스타일
+                  // color: const Color(0xFFEFEFF0), // 썸네일이 덮으므로 생략 가능하지만 배경색으로 둠
                   border: Border.all(
                     color: const Color(0xFFAFB1B6),
                     width: 2 * scale,
                   ),
                   borderRadius: BorderRadius.circular(8 * scale),
                 ),
-                child: Center(
-                  child: Icon(
-                    Icons.videocam,
-                    size: 60 * scale,
-                    color: const Color(0xFFAFB1B6),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(6 * scale),
+                  child: Stack(
+                    children: [
+                      // 썸네일 (VideoPlayer)
+                      if (_isInitialized && _controller != null)
+                        SizedBox.expand(
+                          child: FittedBox(
+                            fit: BoxFit.cover,
+                            child: SizedBox(
+                              width: _controller!.value.size.width,
+                              height: _controller!.value.size.height,
+                              child: VideoPlayer(_controller!),
+                            ),
+                          ),
+                        ),
+                      
+                      // 검은 오버레이 레이어 (썸네일 위에 덮임)
+                      Container(
+                        color: Colors.black.withValues(alpha: 0.4),
+                      ),
+
+                      // 다시 재생 버튼 (중앙)
+                      Center(
+                        child: GestureDetector(
+                          onTap: () {
+                            // 다시 재생 버튼 클릭 시 비디오 플레이어 화면으로 이동
+                            if (widget.videoUrl != null) {
+                              Navigator.pushReplacement(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => VideoPlayerScreen(videoUrl: widget.videoUrl),
+                                ),
+                              );
+                            } else {
+                              Navigator.pop(context);
+                            }
+                          },
+                          child: Container(
+                            width: 46.217 * scale,
+                            height: 51 * scale,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.white.withValues(alpha: 0.9),
+                            ),
+                            child: Icon(
+                              Icons.replay,
+                              size: 30 * scale,
+                              color: Colors.black,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
             ),
-            // 검은 오버레이 레이어
-            // Figma: bg-[rgba(0,0,0,0.4)], x=0, y=24, width=362, height=776
-            Positioned(
-              top: 24 * scale,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: Container(
-                color: Colors.black.withValues(alpha: 0.4),
-              ),
-            ),
-            // 다시 재생 버튼
-            // Figma: x=158, y=375, width=46.217, height=51
-            Positioned(
-              top: 375 * scale,
-              left: 158 * scale,
-              child: GestureDetector(
-                onTap: () {
-                  // 다시 재생 버튼 클릭 시 비디오 플레이어 화면으로 돌아가기
-                  Navigator.pop(context);
-                },
-                child: Container(
-                  width: 46.217 * scale,
-                  height: 51 * scale,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.white.withValues(alpha: 0.9),
-                  ),
-                  child: Icon(
-                    Icons.replay,
-                    size: 30 * scale,
-                    color: Colors.black,
-                  ),
-                ),
-              ),
-            ),
-            // 팝업 알림 (5초 후 표시)
-            // Figma: Frame 1686558309, x=30, y=221, width=302, height=357.277
+            // 5. 팝업 알림 (5초 후 표시 - 화면 전체 오버레이)
             if (_showPopup)
               Positioned.fill(
                 child: GestureDetector(
@@ -211,7 +245,6 @@ class _VideoPlayerOverlayScreenState extends State<VideoPlayerOverlayScreen> {
                               child: Stack(
                                 children: [
                                   // 닫기 버튼 (우측 상단)
-                                  // Figma: Group 633022, x=271, y=14
                                   Positioned(
                                     top: 14 * scale,
                                     right: 14 * scale,
@@ -237,7 +270,6 @@ class _VideoPlayerOverlayScreenState extends State<VideoPlayerOverlayScreen> {
                                     ),
                                   ),
                                   // 캐릭터 이미지 (GIF)
-                                  // Figma: x=107, y=31, width=88, height=132
                                   Positioned(
                                     top: 31 * scale,
                                     left: 107 * scale,
@@ -256,7 +288,6 @@ class _VideoPlayerOverlayScreenState extends State<VideoPlayerOverlayScreen> {
                                     ),
                                   ),
                                   // "문제가 해결되셨나요?" 텍스트
-                                  // 중앙 정렬, 글자 크기 증가, 잘리지 않도록 수정
                                   Positioned(
                                     top: 165 * scale,
                                     left: 10 * scale,
@@ -266,7 +297,7 @@ class _VideoPlayerOverlayScreenState extends State<VideoPlayerOverlayScreen> {
                                       text: TextSpan(
                                         style: TextStyle(
                                           fontFamily: 'Noto Sans',
-                                          fontSize: 18 * scale, // 16 -> 18
+                                          fontSize: 18 * scale,
                                           fontWeight: FontWeight.bold,
                                           color: Colors.black,
                                           letterSpacing: -0.8 * scale,
@@ -285,7 +316,6 @@ class _VideoPlayerOverlayScreenState extends State<VideoPlayerOverlayScreen> {
                                     ),
                                   ),
                                   // "추가로 문의하고 싶은게 있으시면 제게 채팅해주세요!" 텍스트
-                                  // 중앙 정렬, 글자 크기 증가, 잘리지 않도록 수정
                                   Positioned(
                                     top: 200 * scale,
                                     left: 15 * scale,
@@ -294,9 +324,9 @@ class _VideoPlayerOverlayScreenState extends State<VideoPlayerOverlayScreen> {
                                       '추가로 문의하고 싶은게 있으시면\n제게 채팅해주세요!',
                                       style: TextStyle(
                                         fontFamily: 'Noto Sans',
-                                        fontSize: 14 * scale, // 12 -> 14
+                                        fontSize: 14 * scale,
                                         fontWeight: FontWeight.w400,
-                                        color: const Color(0xFF6B6B6B), // achievement_screen과 동일한 진한 회색
+                                        color: const Color(0xFF6B6B6B),
                                         letterSpacing: -0.24 * scale,
                                         height: 1.5,
                                       ),
@@ -306,17 +336,14 @@ class _VideoPlayerOverlayScreenState extends State<VideoPlayerOverlayScreen> {
                                     ),
                                   ),
                                   // 버튼들
-                                  // Figma: x=34, y=277, width=229, height=40
                                   Positioned(
                                     top: 277 * scale,
                                     left: 34 * scale,
                                     child: Row(
                                       children: [
                                         // "채팅 문의" 버튼
-                                        // Figma: x=0, y=0, width=104, height=40
                                         GestureDetector(
                                           onTap: () {
-                                            // 채팅 문의 버튼 클릭 시 ChatScreen으로 이동
                                             Navigator.push(
                                               context,
                                               MaterialPageRoute(builder: (context) => const ChatScreen()),
@@ -350,12 +377,10 @@ class _VideoPlayerOverlayScreenState extends State<VideoPlayerOverlayScreen> {
                                             ),
                                           ),
                                         ),
-                                        SizedBox(width: 24 * scale), // 128 - 104 = 24
+                                        SizedBox(width: 24 * scale),
                                         // "종료하기" 버튼
-                                        // Figma: x=128, y=0, width=101, height=40
                                         GestureDetector(
                                           onTap: () {
-                                            // 맞춤 칭호 화면으로 이동
                                             Navigator.push(
                                               context,
                                               MaterialPageRoute(builder: (context) => const AchievementScreen()),
@@ -408,4 +433,3 @@ class _VideoPlayerOverlayScreenState extends State<VideoPlayerOverlayScreen> {
     );
   }
 }
-
