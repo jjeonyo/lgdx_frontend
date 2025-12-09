@@ -527,6 +527,13 @@ class LiveCameraService {
                 final shouldExit = data['exit'] ?? false;
                 print("✅ [LiveCamera] 턴 완료 신호 수신 (exit: $shouldExit)");
                 
+                // AI 응답이 완료되었으므로 추가 메시지 저장
+                if (!shouldExit) {
+                  // X 버튼을 누르지 않은 경우에만 추가 메시지 저장 (대화가 계속되는 경우)
+                  const videoMessage = "지금까지 대화 나눈 내용을 바탕으로 ai 기반 문제 해결 영상을 보고 싶다면 오른쪽 위에 동영상 버튼을 눌러주세요";
+                  _saveToFirebase('gemini', videoMessage);
+                }
+                
                 if (shouldExit) {
                   // X 버튼을 누른 경우: 오디오 재생 중단 및 홈으로 이동
                   print("✅ [LiveCamera] X 버튼 클릭 감지 - 오디오 재생 중단 및 홈으로 이동");
