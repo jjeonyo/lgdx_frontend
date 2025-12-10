@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
 import 'video_player_screen.dart';
@@ -18,10 +17,12 @@ class _VideoProductionScreenState extends State<VideoProductionScreen> {
   Timer? _pollingTimer;
   // 백엔드 상태 확인 URL
   String get _checkStatusUrl => '${ApiConfig.baseUrl}/check-video-status';
-  
+
   // 로딩 화면 최소 유지 시간을 위한 변수
   late DateTime _startTime;
   static const Duration _minLoadingTime = Duration(seconds: 4);
+  static const int _minFileSizeBytes = 50 * 1024; // 최소 50KB 이상일 때만 재생 시도
+  String? _lastAcceptedVideoName; // 이미 재생한(또는 허용한) 영상 파일명
 
   @override
   void initState() {
@@ -39,7 +40,7 @@ class _VideoProductionScreenState extends State<VideoProductionScreen> {
 
   Future<void> _navigateWithDelay(Widget nextScreen) async {
     _pollingTimer?.cancel();
-    
+
     // 최소 로딩 시간 보장
     final elapsedTime = DateTime.now().difference(_startTime);
     if (elapsedTime < _minLoadingTime) {
@@ -49,52 +50,118 @@ class _VideoProductionScreenState extends State<VideoProductionScreen> {
     if (mounted) {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(
-          builder: (context) => nextScreen,
-        ),
+        MaterialPageRoute(builder: (context) => nextScreen),
       );
     }
   }
 
-  void _handleFailure() async {
-    _pollingTimer?.cancel();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('영상 생성 실패. 기본 영상을 재생합니다.'),
-          duration: Duration(seconds: 2),
-        ),
-      );
-      
-      // 에러 메시지를 볼 수 있도록 조금 더 기다림
-      await Future.delayed(const Duration(seconds: 2));
-
-      // 실패 시 기본 영상 재생 (예제 URL 또는 로컬 에셋)
-      // 로컬 에셋 사용
-      const fallbackUrl = 'assets/videos/default_video.mp4';
-      
-      if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => const VideoPlayerScreen(videoUrl: fallbackUrl),
-          ),
-        );
+  String? _extractFileName(String rawUrl) {
+    try {
+      final uri = Uri.parse(rawUrl);
+      if (uri.pathSegments.isNotEmpty) {
+        return uri.pathSegments.last;
       }
+      // 단순 문자열 분리 fallback
+      final parts = rawUrl.split('/');
+      return parts.isNotEmpty ? parts.last : null;
+    } catch (_) {
+      final parts = rawUrl.split('/');
+      return parts.isNotEmpty ? parts.last : null;
+    }
+  }
+
+  bool _isFreshVideo(String fileName) {
+    // 파일명 패턴: result_solution_YYYYMMDD_HHMMSS.mp4
+    final match = RegExp(
+      r'result_solution_(\d{8})_(\d{6})\.mp4',
+    ).firstMatch(fileName);
+    if (match == null) return true; // 패턴 모르면 일단 허용
+
+    final dateStr = match.group(1)!; // YYYYMMDD
+    final timeStr = match.group(2)!; // HHMMSS
+    try {
+      final year = int.parse(dateStr.substring(0, 4));
+      final month = int.parse(dateStr.substring(4, 6));
+      final day = int.parse(dateStr.substring(6, 8));
+      final hour = int.parse(timeStr.substring(0, 2));
+      final minute = int.parse(timeStr.substring(2, 4));
+      final second = int.parse(timeStr.substring(4, 6));
+      final createdAt = DateTime(year, month, day, hour, minute, second);
+
+      // 영상 생성 시작 시점 이후에 생성된 것만 허용
+      return !createdAt.isBefore(_startTime);
+    } catch (_) {
+      return true;
+    }
+  }
+
+  Future<bool> _isReachable(String url) async {
+    try {
+      final head = await http.head(Uri.parse(url));
+      final ok = head.statusCode == 200;
+      final lenStr = head.headers['content-length'];
+      if (lenStr != null) {
+        final len = int.tryParse(lenStr);
+        if (len != null && len < _minFileSizeBytes) {
+          print("⚠️ [Polling] Content too small ($len bytes) for $url");
+          return false;
+        }
+      }
+      if (!ok) {
+        print("⚠️ [Polling] HEAD check failed (${head.statusCode}) for $url");
+      }
+      return ok;
+    } catch (e) {
+      print("⚠️ [Polling] HEAD check error for $url: $e");
+      return false;
     }
   }
 
   Future<void> _checkVideoStatus() async {
     try {
       final response = await http.get(Uri.parse(_checkStatusUrl));
-      
+      print("📡 [Polling] Status Check: ${response.statusCode}"); // 상태 코드 로그 추가
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
+        print("📡 [Polling] Response Body: $data"); // 응답 데이터 로그 추가
         final status = data['status']; // 'processing', 'completed', 'failed'
-        
-        if (status == 'completed') {
-          String videoUrl = data['video_url']; // 생성된 비디오 URL
-          
+        final rawUrl = data['video_url'];
+        final createdAtStr = data['video_created_at'];
+
+        if (status == 'completed' &&
+            rawUrl != null &&
+            rawUrl.toString().isNotEmpty) {
+          print("✅ [Polling] Video generation completed!");
+          String videoUrl = rawUrl; // 생성된 비디오 URL
+          print("✅ [Polling] Raw Video URL: $videoUrl");
+
+          final fileName = _extractFileName(videoUrl);
+          if (fileName == null) {
+            print("⚠️ [Polling] 파일명을 파싱하지 못했습니다. 계속 대기.");
+            return;
+          }
+
+          // 같은 파일이면 재생하지 않고 대기
+          if (_lastAcceptedVideoName == fileName) {
+            print("⏳ [Polling] 동일 파일 감지 (${fileName}), 새 파일을 대기합니다.");
+            return;
+          }
+
+          // 생성 시작 이후 파일인지 확인 (예전 파일이면 스킵)
+          if (!_isFreshVideo(fileName)) {
+            print("⏳ [Polling] 이전 생성 파일(${fileName})로 판단되어 대기합니다.");
+            return;
+          }
+
+          if (createdAtStr != null) {
+            final createdAt = DateTime.tryParse(createdAtStr);
+            if (createdAt != null && createdAt.isBefore(_startTime)) {
+              print("⏳ [Polling] 생성 시각이 현재 세션 이전입니다. 대기합니다. ($createdAtStr)");
+              return;
+            }
+          }
+
           // 상대 경로인 경우 base URL 추가
           if (!videoUrl.startsWith('http')) {
             // URL이 /로 시작하지 않으면 추가
@@ -103,33 +170,45 @@ class _VideoProductionScreenState extends State<VideoProductionScreen> {
             }
             videoUrl = '${ApiConfig.baseUrl}$videoUrl';
           }
-          
+          print("✅ [Polling] Final Video URL: $videoUrl");
+
+          // 실제로 접근 가능한지 HEAD로 확인
+          final reachable = await _isReachable(videoUrl);
+          if (!reachable) {
+            print("⏳ [Polling] 파일이 아직 서빙되지 않았습니다. 재시도.");
+            return;
+          }
+
+          _lastAcceptedVideoName = fileName;
           await _navigateWithDelay(VideoPlayerScreen(videoUrl: videoUrl));
-        } else if (status == 'failed') {
-          _handleFailure();
+        } else {
+          // 실패나 진행 중인 경우에도 계속 대기
+          print("⏳ [Polling] Waiting for video file... (status: $status)");
         }
       } else {
         // 상태 코드가 200이 아닌 경우
         print("Status check failed: ${response.statusCode}");
-        
+
         // 서버에서 명시적인 에러 메시지가 오는 경우 실패 처리
         // 예: Quota Exceeded, Rate Limit, 429 등
-        if (response.statusCode == 429 || 
-            response.body.contains('RESOURCE_EXHAUSTED') || 
+        if (response.statusCode == 429 ||
+            response.body.contains('RESOURCE_EXHAUSTED') ||
             response.body.contains('quota')) {
-          print("Critical error detected: ${response.body}");
-          _handleFailure();
+          print(
+            "Critical error detected: ${response.body} (will keep polling)",
+          );
         } else {
           // 500 Internal Server Error 등 기타 서버 오류 발생 시에도 실패 처리하지 않고 로그만 출력
           // (긴 작업 중 일시적 타임아웃 등은 무시하고 계속 폴링)
           print("Server status code: ${response.statusCode}");
-          
+
           // 하지만 명시적인 Quota 에러는 실패 처리
-          if (response.statusCode == 429 || 
-              response.body.contains('RESOURCE_EXHAUSTED') || 
+          if (response.statusCode == 429 ||
+              response.body.contains('RESOURCE_EXHAUSTED') ||
               response.body.contains('quota')) {
-            print("Critical error detected: ${response.body}");
-            _handleFailure();
+            print(
+              "Critical error detected: ${response.body} (will keep polling)",
+            );
           }
         }
       }
@@ -151,17 +230,19 @@ class _VideoProductionScreenState extends State<VideoProductionScreen> {
   @override
   Widget build(BuildContext context) {
     // 상태바 스타일 설정 (Figma: #faf9fd 배경)
-    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-      statusBarColor: Color(0xFFFAF9FD),
-      statusBarIconBrightness: Brightness.dark,
-      systemNavigationBarColor: Color(0xFFBAA6F7),
-      systemNavigationBarIconBrightness: Brightness.dark,
-    ));
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Color(0xFFFAF9FD),
+        statusBarIconBrightness: Brightness.dark,
+        systemNavigationBarColor: Color(0xFFBAA6F7),
+        systemNavigationBarIconBrightness: Brightness.dark,
+      ),
+    );
 
     final mediaQuery = MediaQuery.of(context);
     final screenWidth = mediaQuery.size.width;
     final screenHeight = mediaQuery.size.height;
-    
+
     // 화면에 딱 맞게 스케일 계산 (Figma 360x800 기준)
     final scale = screenWidth / figmaWidth;
 
@@ -201,9 +282,7 @@ class _VideoProductionScreenState extends State<VideoProductionScreen> {
               left: 0,
               right: 0,
               height: 24 * scale,
-              child: Container(
-                color: const Color(0xFFFAF9FD),
-              ),
+              child: Container(color: const Color(0xFFFAF9FD)),
             ),
             // 뒤로가기 버튼
             // Figma: top:40, left:12, width:24, height:24
@@ -211,7 +290,11 @@ class _VideoProductionScreenState extends State<VideoProductionScreen> {
               top: 40 * scale,
               left: 12 * scale,
               child: IconButton(
-                icon: Icon(Icons.arrow_back, size: 24 * scale, color: Colors.white),
+                icon: Icon(
+                  Icons.arrow_back,
+                  size: 24 * scale,
+                  color: Colors.white,
+                ),
                 onPressed: () {
                   Navigator.pop(context);
                 },
@@ -234,7 +317,11 @@ class _VideoProductionScreenState extends State<VideoProductionScreen> {
                     width: 95 * scale,
                     height: 143 * scale,
                     color: Colors.grey.withValues(alpha: 0.3),
-                    child: Icon(Icons.person, size: 40 * scale, color: Colors.grey),
+                    child: Icon(
+                      Icons.person,
+                      size: 40 * scale,
+                      color: Colors.grey,
+                    ),
                   );
                 },
               ),
@@ -270,7 +357,9 @@ class _VideoProductionScreenState extends State<VideoProductionScreen> {
                 width: 48 * scale,
                 height: 48 * scale,
                 child: CircularProgressIndicator(
-                  valueColor: AlwaysStoppedAnimation<Color>(const Color(0xFF7B61FF)),
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    const Color(0xFF7B61FF),
+                  ),
                   strokeWidth: 4 * scale,
                 ),
               ),
@@ -281,4 +370,3 @@ class _VideoProductionScreenState extends State<VideoProductionScreen> {
     );
   }
 }
-
