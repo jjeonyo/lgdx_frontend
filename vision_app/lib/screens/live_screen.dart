@@ -1,4 +1,7 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -8,6 +11,72 @@ import 'customer_service_screen.dart';
 import 'elli_home_screen.dart';
 import '../services/live_camera_service.dart'; // LiveCameraService with aiWatching, lastImageAckAt, lastImageSentAt
 
+// -----------------------------------------------------------------------------
+// Isolate Functions for Image Conversion (No Changes)
+// -----------------------------------------------------------------------------
+Future<String?> convertYUV420ToBase64(Map<String, dynamic> params) async {
+  try {
+    final int width = params['width'];
+    final int height = params['height'];
+    final Uint8List yPlane = params['yPlane'];
+    final Uint8List uPlane = params['uPlane'];
+    final Uint8List vPlane = params['vPlane'];
+    final int yRowStride = params['yRowStride'];
+    final int uvRowStride = params['uvRowStride'];
+    final int uvPixelStride = params['uvPixelStride'];
+
+    final img.Image image = img.Image(width: width, height: height);
+
+    for (int y = 0; y < height; y++) {
+      for (int x = 0; x < width; x++) {
+        final int uvIndex =
+            uvPixelStride * (x / 2).floor() + uvRowStride * (y / 2).floor();
+        final int yIndex = y * yRowStride + x;
+
+        final int yp = yPlane[yIndex];
+        final int up = uPlane[uvIndex];
+        final int vp = vPlane[uvIndex];
+
+        int r = (yp + 1.402 * (vp - 128)).round().clamp(0, 255);
+        int g = (yp - 0.344136 * (up - 128) - 0.714136 * (vp - 128))
+            .round()
+            .clamp(0, 255);
+        int b = (yp + 1.772 * (up - 128)).round().clamp(0, 255);
+
+        image.setPixelRgb(x, y, r, g, b);
+      }
+    }
+
+    return base64Encode(img.encodeJpg(image, quality: 50));
+  } catch (e) {
+    debugPrint("YUV Conversion Error: $e");
+    return null;
+  }
+}
+
+Future<String?> convertBGRAToBase64(Map<String, dynamic> params) async {
+  try {
+    final int width = params['width'];
+    final int height = params['height'];
+    final Uint8List bgraPlane = params['bgraPlane'];
+
+    final img.Image image = img.Image.fromBytes(
+      width: width,
+      height: height,
+      bytes: bgraPlane.buffer,
+      order: img.ChannelOrder.bgra,
+    );
+
+    return base64Encode(img.encodeJpg(image, quality: 50));
+  } catch (e) {
+    debugPrint("BGRA Conversion Error: $e");
+    return null;
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Main LiveScreen Widget
+// -----------------------------------------------------------------------------
 class LiveScreen extends StatefulWidget {
   const LiveScreen({super.key});
 
@@ -40,7 +109,6 @@ class _LiveScreenState extends State<LiveScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // 상태바 스타일 설정
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
       statusBarColor: Color(0xFFFAF9FD),
       statusBarIconBrightness: Brightness.dark,
@@ -51,8 +119,6 @@ class _LiveScreenState extends State<LiveScreen> {
     final mediaQuery = MediaQuery.of(context);
     final screenWidth = mediaQuery.size.width;
     final screenHeight = mediaQuery.size.height;
-    
-    // 화면에 딱 맞게 스케일 계산 (Figma 360x800 기준)
     final scale = screenWidth / figmaWidth;
 
     return Scaffold(
@@ -82,7 +148,7 @@ class _LiveScreenState extends State<LiveScreen> {
                 ),
               ),
             ),
-            // 상단 상태바 영역
+            // 상태바 영역
             Positioned(
               top: 0,
               left: 0,
@@ -90,7 +156,7 @@ class _LiveScreenState extends State<LiveScreen> {
               height: 24 * scale,
               child: Container(color: const Color(0xFFFAF9FD)),
             ),
-            // "실시간 진단" 텍스트와 빨간 점
+            // "실시간 진단" 텍스트
             Positioned(
               top: 70 * scale,
               left: 23 * scale,
@@ -119,6 +185,7 @@ class _LiveScreenState extends State<LiveScreen> {
               ],
               ),
             ),
+            // 오른쪽 상단 아이콘들
             // 오른쪽 상단 아이콘 버튼들 (피그마 디자인에 맞게 수정)
             // Figma: left-[271px], top-[68px], gap-[15px]
             Positioned(
@@ -136,6 +203,35 @@ class _LiveScreenState extends State<LiveScreen> {
                         MaterialPageRoute(builder: (context) => const ChatScreen()),
                       );
                     },
+                  ),
+                  Positioned(
+                    left: 0,
+                    top: 0,
+                    width: (97.28571319580078 / 3) * scale,
+                    height: 24 * scale,
+                    child: GestureDetector(
+                      onTap: () => Navigator.push(context,
+                          MaterialPageRoute(builder: (context) => const ChatScreen())),
+                      child: Container(color: Colors.transparent),
+                    ),
+                  ),
+                  Positioned(
+                    left: (97.28571319580078 / 3) * scale,
+                    top: 0,
+                    width: (97.28571319580078 / 3) * scale,
+                    height: 24 * scale,
+                    child: GestureDetector(
+                      onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (context) => const VideoProductionScreen())),
+                      child: Container(color: Colors.transparent),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // 중앙 비디오 영역
                     child: SvgPicture.asset(
                       'assets/images/라이브상단아이콘.svg',
                       width: 24 * scale,
@@ -197,7 +293,7 @@ class _LiveScreenState extends State<LiveScreen> {
                 ),
               ),
             ),
-            // 왼쪽 하단 캐릭터 이미지
+            // 캐릭터 이미지
             Positioned(
               top: 509 * scale,
               left: 19 * scale,
@@ -292,7 +388,6 @@ class _LiveScreenState extends State<LiveScreen> {
                 ),
               ),
             ),
-            // 두 번째 버튼 (재생)
             Positioned(
               top: 687 * scale,
               left: 147 * scale,
@@ -320,7 +415,8 @@ class _LiveScreenState extends State<LiveScreen> {
                       return Container(
                         width: 66 * scale,
                         height: 44 * scale,
-                        color: const Color(0xFF29344E).withValues(alpha: 0.54),
+                        color:
+                            const Color(0xFF29344E).withValues(alpha: 0.54),
                       );
                     },
                   ),

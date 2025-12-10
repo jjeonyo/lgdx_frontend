@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'dart:io';
+import 'package:http/http.dart' as http;
+import '../config/api_config.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'video_production_screen.dart';
 import 'chat_screen.dart';
@@ -273,7 +276,20 @@ class _LiveScreenWithButtonsState extends State<LiveScreenWithButtons> {
                     // "예" 버튼
                     // Figma: width:90, height:37
                     GestureDetector(
-                      onTap: () {
+                      onTap: () async {
+                        // 1. 백엔드 실행 요청 (비동기, 결과 기다리지 않음 또는 필요시 await)
+                        try {
+                          final url = Uri.parse('${ApiConfig.baseUrl}/generate-video');
+                          http.post(url).then((response) {
+                            print("Generation trigger response: ${response.statusCode}");
+                          }).catchError((error) {
+                            print("Generation trigger error: $error");
+                          });
+                        } catch (e) {
+                          print("Error triggering generation: $e");
+                        }
+
+                        // 2. 화면 이동
                         Navigator.push(
                           context,
                           MaterialPageRoute(builder: (context) => const VideoProductionScreen()),
