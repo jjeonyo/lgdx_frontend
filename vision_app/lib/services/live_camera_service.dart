@@ -16,9 +16,11 @@ class LiveCameraService {
   //    - iPhone 핫스팟: 172.20.10.x
   //    - Android 핫스팟: 192.168.43.x 또는 192.168.137.x
   //    - 일반 Wi-Fi: 192.168.0.x 또는 192.168.1.x
-  static const String REAL_DEVICE_IP = "192.168.0.27"; // PC IP 주소 (ipconfig로 확인)
-  static const String WS_URL = "ws://$REAL_DEVICE_IP:8001/ws/chat"; // test.py는 포트 8001 사용
-  
+  static const String REAL_DEVICE_IP =
+      "192.168.0.27"; // PC IP 주소 (ipconfig로 확인)
+  static const String WS_URL =
+      "ws://$REAL_DEVICE_IP:8001/ws/chat"; // test.py는 포트 8001 사용
+
   CameraController? _cameraController;
   WebSocketChannel? _channel;
   StreamSubscription? _websocketSubscription;
@@ -38,12 +40,12 @@ class LiveCameraService {
   Timer? _userSpeechTimer; // 사용자가 말을 멈췄는지 감지
   DateTime? _lastAudioSentTime; // 마지막 오디오 전송 시간
   bool _isRecordingEnabled = true; // 녹음 활성화 상태 (AI 응답 중에는 false)
-  
+
   bool _isStreaming = false;
   String? _sessionId;
   String? _roomId; // chat_room ID (room_user_001 형식)
   VoidCallback? _onExitRequested; // 엘리홈으로 이동 콜백
-  
+
   // Firebase에 텍스트 저장 (chat_rooms에 저장)
   Future<void> _saveToFirebase(String sender, String text) async {
     try {
@@ -51,48 +53,55 @@ class LiveCameraService {
         print("⚠️ [LiveCamera] roomId가 없어 Firebase에 저장할 수 없습니다.");
         return;
       }
-      
+
       // 빈 텍스트 체크
       if (text.isEmpty || text.trim().isEmpty) {
         print("⚠️ [LiveCamera] 빈 텍스트는 저장하지 않습니다.");
         return;
       }
-      
+
       // AI 응답인 경우 영어만 있는 텍스트는 저장하지 않음 (한국어만 저장)
       if (sender == 'gemini') {
         if (_isEnglishOnly(text)) {
-          print("⚠️ [LiveCamera] 영어만 포함된 AI 응답은 저장하지 않습니다: ${text.substring(0, text.length > 50 ? 50 : text.length)}...");
+          print(
+            "⚠️ [LiveCamera] 영어만 포함된 AI 응답은 저장하지 않습니다: ${text.substring(0, text.length > 50 ? 50 : text.length)}...",
+          );
           return;
         }
         // 한국어가 포함되어 있으면 저장
         if (!_containsKorean(text)) {
-          print("⚠️ [LiveCamera] 한국어가 포함되지 않은 AI 응답은 저장하지 않습니다: ${text.substring(0, text.length > 50 ? 50 : text.length)}...");
+          print(
+            "⚠️ [LiveCamera] 한국어가 포함되지 않은 AI 응답은 저장하지 않습니다: ${text.substring(0, text.length > 50 ? 50 : text.length)}...",
+          );
           return;
         }
       }
-      
+
       final timestamp = DateTime.now();
-      
+
       // 타임아웃 설정으로 방화벽 문제 완화
       await FirebaseFirestore.instance
           .collection('chat_rooms')
           .doc(_roomId)
           .collection('messages')
           .add({
-        'sender': sender,
-        'text': text,
-        'message_type': 'live', // 라이브 대화는 모두 'live'로 저장
-        'timestamp': FieldValue.serverTimestamp(),
-        'created_at': timestamp.millisecondsSinceEpoch,
-        'timezone': 'KST',
-      }).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () {
-          throw TimeoutException('Firebase 저장 시간 초과 (방화벽 문제 가능성)');
-        },
+            'sender': sender,
+            'text': text,
+            'message_type': 'live', // 라이브 대화는 모두 'live'로 저장
+            'timestamp': FieldValue.serverTimestamp(),
+            'created_at': timestamp.millisecondsSinceEpoch,
+            'timezone': 'KST',
+          })
+          .timeout(
+            const Duration(seconds: 10),
+            onTimeout: () {
+              throw TimeoutException('Firebase 저장 시간 초과 (방화벽 문제 가능성)');
+            },
+          );
+
+      print(
+        "✅ [LiveCamera] Firebase 저장 성공 (chat_rooms/$_roomId/messages) - sender: $sender, text: ${text.substring(0, text.length > 50 ? 50 : text.length)}...",
       );
-      
-      print("✅ [LiveCamera] Firebase 저장 성공 (chat_rooms/$_roomId/messages) - sender: $sender, text: ${text.substring(0, text.length > 50 ? 50 : text.length)}...");
     } on TimeoutException catch (e) {
       print("⏱️ [LiveCamera] Firebase 저장 시간 초과: $e");
       print("   방화벽이 Firebase 연결을 차단하고 있을 수 있습니다.");
@@ -100,7 +109,7 @@ class LiveCameraService {
     } catch (e) {
       print("❌ [LiveCamera] Firebase 저장 실패: $e");
       // 방화벽 관련 에러 메시지 확인
-      if (e.toString().contains('firewall') || 
+      if (e.toString().contains('firewall') ||
           e.toString().contains('방화벽') ||
           e.toString().contains('network') ||
           e.toString().contains('unreachable')) {
@@ -111,33 +120,36 @@ class LiveCameraService {
       }
     }
   }
-  
+
   // 권한 요청 (BuildContext를 받아서 다이얼로그 표시 가능)
   Future<bool> requestPermissions(BuildContext? context) async {
     try {
       print("🔐 [LiveCamera] 권한 요청 시작");
-      
+
       // 먼저 현재 권한 상태 확인
       final cameraStatus = await Permission.camera.status;
       final microphoneStatus = await Permission.microphone.status;
-      
-      print("🔐 [LiveCamera] 현재 권한 상태 - 카메라: $cameraStatus, 마이크: $microphoneStatus");
-      
+
+      print(
+        "🔐 [LiveCamera] 현재 권한 상태 - 카메라: $cameraStatus, 마이크: $microphoneStatus",
+      );
+
       // 이미 권한이 있으면 바로 반환
       if (cameraStatus.isGranted && microphoneStatus.isGranted) {
         print("✅ [LiveCamera] 권한 이미 승인됨");
         return true;
       }
-      
+
       // 권한이 영구적으로 거부된 경우 설정으로 이동
-      if (cameraStatus.isPermanentlyDenied || microphoneStatus.isPermanentlyDenied) {
+      if (cameraStatus.isPermanentlyDenied ||
+          microphoneStatus.isPermanentlyDenied) {
         print("⚠️ [LiveCamera] 권한이 영구적으로 거부됨 - 설정으로 이동 필요");
         if (context != null && context.mounted) {
           _showPermissionDialog(context);
         }
         return false;
       }
-      
+
       // 권한 요청 (순차적으로 요청하여 충돌 방지)
       print("🔐 [LiveCamera] 카메라 권한 요청 중...");
       PermissionStatus cameraResult = cameraStatus;
@@ -145,29 +157,32 @@ class LiveCameraService {
         cameraResult = await Permission.camera.request();
         print("🔐 [LiveCamera] 카메라 권한 결과: $cameraResult");
       }
-      
+
       // 잠시 대기 (권한 팝업이 겹치지 않도록)
       await Future.delayed(const Duration(milliseconds: 300));
-      
+
       print("🔐 [LiveCamera] 마이크 권한 요청 중...");
       PermissionStatus microphoneResult = microphoneStatus;
       if (!microphoneStatus.isGranted) {
         microphoneResult = await Permission.microphone.request();
         print("🔐 [LiveCamera] 마이크 권한 결과: $microphoneResult");
       }
-      
+
       // 최종 권한 상태 확인
       final finalCameraStatus = await Permission.camera.status;
       final finalMicrophoneStatus = await Permission.microphone.status;
-      
+
       if (finalCameraStatus.isGranted && finalMicrophoneStatus.isGranted) {
         print("✅ [LiveCamera] 권한 승인 완료");
         return true;
       } else {
-        print("❌ [LiveCamera] 권한 거부됨 - 카메라: $finalCameraStatus, 마이크: $finalMicrophoneStatus");
-        
+        print(
+          "❌ [LiveCamera] 권한 거부됨 - 카메라: $finalCameraStatus, 마이크: $finalMicrophoneStatus",
+        );
+
         // 권한이 거부되었고, 영구적으로 거부되지 않은 경우 다시 요청
-        if (finalCameraStatus.isPermanentlyDenied || finalMicrophoneStatus.isPermanentlyDenied) {
+        if (finalCameraStatus.isPermanentlyDenied ||
+            finalMicrophoneStatus.isPermanentlyDenied) {
           // 영구적으로 거부된 경우 설정으로 이동
           if (context != null && context.mounted) {
             _showPermissionDialog(context);
@@ -189,7 +204,7 @@ class LiveCameraService {
       return false;
     }
   }
-  
+
   // 권한 거부 다이얼로그 (설정으로 이동)
   void _showPermissionDialog(BuildContext context) {
     showDialog(
@@ -224,7 +239,7 @@ class LiveCameraService {
       },
     );
   }
-  
+
   // 권한 거부 다이얼로그 (일시적 거부)
   void _showPermissionDeniedDialog(BuildContext context) {
     showDialog(
@@ -249,7 +264,7 @@ class LiveCameraService {
       },
     );
   }
-  
+
   // 권한 요청 에러 다이얼로그
   void _showPermissionErrorDialog(BuildContext context, String error) {
     showDialog(
@@ -257,7 +272,9 @@ class LiveCameraService {
       builder: (BuildContext context) {
         return AlertDialog(
           title: const Text('오류'),
-          content: Text('권한 요청 중 오류가 발생했습니다.\n\n오류: $error\n\n앱을 재시작하거나 설정에서 직접 권한을 허용해주세요.'),
+          content: Text(
+            '권한 요청 중 오류가 발생했습니다.\n\n오류: $error\n\n앱을 재시작하거나 설정에서 직접 권한을 허용해주세요.',
+          ),
           actions: [
             TextButton(
               onPressed: () {
@@ -277,7 +294,7 @@ class LiveCameraService {
       },
     );
   }
-  
+
   // 카메라 초기화
   Future<bool> initializeCamera() async {
     try {
@@ -286,36 +303,40 @@ class LiveCameraService {
         print("❌ [LiveCamera] 사용 가능한 카메라가 없습니다.");
         return false;
       }
-      
+
       // 후면 카메라 우선, 없으면 전면 카메라
       final camera = cameras.firstWhere(
         (camera) => camera.lensDirection == CameraLensDirection.back,
         orElse: () => cameras.first,
       );
-      
-      print("📹 [LiveCamera] 선택된 카메라: ${camera.lensDirection == CameraLensDirection.back ? '후면' : '전면'}");
-      
+
+      print(
+        "📹 [LiveCamera] 선택된 카메라: ${camera.lensDirection == CameraLensDirection.back ? '후면' : '전면'}",
+      );
+
       _cameraController = CameraController(
         camera,
         ResolutionPreset.medium,
         enableAudio: true,
       );
-      
+
       await _cameraController!.initialize();
-      print("✅ [LiveCamera] 카메라 초기화 완료 (${camera.lensDirection == CameraLensDirection.back ? '후면' : '전면'})");
+      print(
+        "✅ [LiveCamera] 카메라 초기화 완료 (${camera.lensDirection == CameraLensDirection.back ? '후면' : '전면'})",
+      );
       return true;
     } catch (e) {
       print("❌ [LiveCamera] 카메라 초기화 실패: $e");
       return false;
     }
   }
-  
+
   // WebSocket 연결 테스트
   Future<bool> _testWebSocketConnection() async {
     try {
       print("🔍 [LiveCamera] 백엔드 연결 테스트 중: $WS_URL");
       final testChannel = WebSocketChannel.connect(Uri.parse(WS_URL));
-      
+
       // 연결 타임아웃 설정 (5초)
       await testChannel.ready.timeout(
         const Duration(seconds: 5),
@@ -324,7 +345,7 @@ class LiveCameraService {
           throw TimeoutException('백엔드 서버 연결 시간 초과 (5초)');
         },
       );
-      
+
       await testChannel.sink.close();
       print("✅ [LiveCamera] 백엔드 연결 테스트 성공");
       return true;
@@ -339,7 +360,7 @@ class LiveCameraService {
       return false;
     }
   }
-  
+
   // WebSocket 연결 및 스트리밍 시작
   Future<bool> startStreaming(BuildContext? context) async {
     try {
@@ -350,7 +371,7 @@ class LiveCameraService {
         return false;
       }
       print("✅ [LiveCamera] 권한 확인 완료");
-      
+
       // 2단계: 카메라 초기화
       print("📹 [LiveCamera] 2단계: 카메라 초기화");
       if (!await initializeCamera()) {
@@ -358,7 +379,7 @@ class LiveCameraService {
         return false;
       }
       print("✅ [LiveCamera] 카메라 초기화 완료");
-      
+
       // 3단계: 백엔드 서버 연결 확인
       print("🔍 [LiveCamera] 3단계: 백엔드 서버 연결 확인");
       final backendAvailable = await _testWebSocketConnection();
@@ -375,13 +396,13 @@ class LiveCameraService {
         return true;
       }
       print("✅ [LiveCamera] 백엔드 서버 연결 확인 완료");
-      
+
       // 4단계: WebSocket 연결
       print("🌐 [LiveCamera] 4단계: WebSocket 연결");
       try {
         _channel = WebSocketChannel.connect(Uri.parse(WS_URL));
         await Future.delayed(const Duration(milliseconds: 500));
-        
+
         if (_channel != null) {
           try {
             await _channel!.ready.timeout(
@@ -402,67 +423,73 @@ class LiveCameraService {
         _channel?.sink.close();
         _channel = null;
       }
-      
+
       // 세션 ID 생성
       _sessionId = DateTime.now().millisecondsSinceEpoch.toString();
       const userId = 'user_001';
       _roomId = 'room_$userId';
-      
+
       // Firebase chat_room 생성
       try {
-        final roomRef = FirebaseFirestore.instance.collection('chat_rooms').doc(_roomId);
+        final roomRef = FirebaseFirestore.instance
+            .collection('chat_rooms')
+            .doc(_roomId);
         final roomDoc = await roomRef.get().timeout(
           const Duration(seconds: 10),
           onTimeout: () => throw TimeoutException('Firebase 연결 시간 초과'),
         );
-        
+
         if (!roomDoc.exists) {
-          await roomRef.set({
-            'user_id': userId,
-            'created_at': FieldValue.serverTimestamp(),
-            'last_message_at': FieldValue.serverTimestamp(),
-          }).timeout(const Duration(seconds: 10));
+          await roomRef
+              .set({
+                'user_id': userId,
+                'created_at': FieldValue.serverTimestamp(),
+                'last_message_at': FieldValue.serverTimestamp(),
+              })
+              .timeout(const Duration(seconds: 10));
           print("✅ [LiveCamera] Firebase chat_room 생성: $_roomId");
         } else {
-          await roomRef.update({
-            'last_message_at': FieldValue.serverTimestamp(),
-          }).timeout(const Duration(seconds: 10));
+          await roomRef
+              .update({'last_message_at': FieldValue.serverTimestamp()})
+              .timeout(const Duration(seconds: 10));
           print("✅ [LiveCamera] Firebase chat_room 사용: $_roomId");
         }
       } catch (e) {
         print("⚠️ [LiveCamera] Firebase chat_room 생성/업데이트 실패: $e");
       }
-      
+
       _isStreaming = true;
-      
+
       // 백엔드 연결된 경우에만 WebSocket 메시지 수신 및 스트리밍 시작
       if (_channel != null) {
         // 오디오 플레이어 초기화
         try {
           _audioPlayer = AudioPlayer();
           // ⭐ 오디오 컨텍스트 설정: 미디어 볼륨으로 재생하여 더 크게 들리도록 함
-          await _audioPlayer!.setAudioContext(AudioContext(
-            android: AudioContextAndroid(
-              isSpeakerphoneOn: true, // 스피커폰 강제 활성화
-              audioMode: AndroidAudioMode.normal, // 일반 모드 (미디어 볼륨 사용)
-              stayAwake: false,
-              contentType: AndroidContentType.music, // 음악으로 설정 (미디어 볼륨)
-              usageType: AndroidUsageType.media, // 미디어 재생으로 설정 (미디어 볼륨 사용)
-              audioFocus: AndroidAudioFocus.gain, // 강한 오디오 포커스
+          await _audioPlayer!.setAudioContext(
+            AudioContext(
+              android: AudioContextAndroid(
+                isSpeakerphoneOn: true, // 스피커폰 강제 활성화
+                audioMode: AndroidAudioMode.normal, // 일반 모드 (미디어 볼륨 사용)
+                stayAwake: false,
+                contentType: AndroidContentType.music, // 음악으로 설정 (미디어 볼륨)
+                usageType: AndroidUsageType.media, // 미디어 재생으로 설정 (미디어 볼륨 사용)
+                audioFocus: AndroidAudioFocus.gain, // 강한 오디오 포커스
+              ),
+              iOS: AudioContextIOS(
+                category: AVAudioSessionCategory.playAndRecord, // 녹음과 재생 동시 지원
+                options: {
+                  AVAudioSessionOptions.defaultToSpeaker, // 스피커로 기본 출력
+                  AVAudioSessionOptions.mixWithOthers, // 다른 오디오와 혼합 허용
+                },
+              ),
             ),
-            iOS: AudioContextIOS(
-              category: AVAudioSessionCategory.playAndRecord, // 녹음과 재생 동시 지원
-              options: {
-                AVAudioSessionOptions.defaultToSpeaker, // 스피커로 기본 출력
-                AVAudioSessionOptions.mixWithOthers, // 다른 오디오와 혼합 허용
-              },
-            ),
-          ));
+          );
           _audioPlayer!.setPlayerMode(PlayerMode.lowLatency);
-          
+
           // ⭐ 중요: 볼륨을 명시적으로 최대로 설정
           await _audioPlayer!.setVolume(1.0);
-          
+
           // ⭐ 중요: 오디오 재생 완료 후 자동으로 릴리즈하지 않음
           // 이렇게 하면 오디오 포커스를 계속 유지하여 녹음을 방해하지 않음
           await _audioPlayer!.setReleaseMode(ReleaseMode.stop);
@@ -480,25 +507,25 @@ class LiveCameraService {
             _isPlayingAudio = false;
             _processAudioQueue();
           });
-          
+
           // 오디오 플레이어 에러 리스너 추가
           _audioPlayer!.onLog.listen((message) {
             print("📝 [LiveCamera] 오디오 플레이어 로그: $message");
           });
-          
+
           _isPlayingAudio = false;
           print("✅ [LiveCamera] 오디오 플레이어 초기화 완료 (lowLatency 모드)");
           print("✅ [LiveCamera] 오디오 플레이어 상태: ${_audioPlayer!.state}");
         } catch (e) {
           print("⚠️ [LiveCamera] 오디오 플레이어 초기화 실패: $e");
         }
-        
+
         // WebSocket 메시지 수신
         _websocketSubscription = _channel!.stream.listen(
           (message) {
             try {
               final data = jsonDecode(message);
-              
+
               // 녹음 중지 신호 처리 (AI 응답 시작)
               if (data['type'] == 'stop_recording') {
                 print("🛑 [LiveCamera] 녹음 중지 신호 수신 (AI 응답 시작)");
@@ -507,7 +534,7 @@ class LiveCameraService {
                 _audioStreamSubscription = null;
                 print("✅ [LiveCamera] 녹음 중지 완료");
               }
-              
+
               // 녹음 재개 신호 처리 (AI 응답 종료)
               if (data['type'] == 'start_recording') {
                 print("🎤 [LiveCamera] 녹음 재개 신호 수신 (AI 응답 종료)");
@@ -515,7 +542,7 @@ class LiveCameraService {
                 _startAudioRecording();
                 print("✅ [LiveCamera] 녹음 재개 완료");
               }
-              
+
               // 텍스트 메시지 처리
               if (data['type'] == 'text' && data['data'] != null) {
                 final text = data['data'] as String;
@@ -524,48 +551,51 @@ class LiveCameraService {
                   _saveToFirebase('gemini', text);
                 }
               }
-              
+
               // 오디오 메시지 처리 (공식 예제 패턴: response.data를 끝까지 이어붙임)
               if (data['type'] == 'audio' && data['data'] != null) {
                 try {
                   final audioBase64 = data['data'] as String;
                   final audioBytes = base64Decode(audioBase64);
-                  
-                  print("🔊 [LiveCamera] 오디오 메시지 수신: ${audioBytes.length} bytes");
-                  
+
+                  print(
+                    "🔊 [LiveCamera] 오디오 메시지 수신: ${audioBytes.length} bytes",
+                  );
+
                   // 공식 예제 패턴: 오디오 청크를 턴 버퍼에 이어붙임
                   _appendAudioChunk(audioBytes);
                 } catch (e) {
                   print("⚠️ [LiveCamera] 오디오 처리 실패: $e");
                 }
               }
-              
+
               // 턴 완료 신호 처리
               // X 버튼을 누르기 전까지는 오디오를 정상적으로 재생
               // X 버튼을 누르면 오디오 재생을 중단하고 홈으로 이동
               if (data['type'] == 'turn_complete') {
                 final shouldExit = data['exit'] ?? false;
                 print("✅ [LiveCamera] 턴 완료 신호 수신 (exit: $shouldExit)");
-                
+
                 // AI 응답이 완료되었으므로 추가 메시지 저장
                 if (!shouldExit) {
                   // X 버튼을 누르지 않은 경우에만 추가 메시지 저장 (대화가 계속되는 경우)
-                  const videoMessage = "지금까지 대화 나눈 내용을 바탕으로 ai 기반 문제 해결 영상을 보고 싶다면 오른쪽 위에 동영상 버튼을 눌러주세요";
+                  const videoMessage =
+                      "지금까지 대화 나눈 내용을 바탕으로 ai 기반 문제 해결 영상을 보고 싶다면 오른쪽 위에 동영상 버튼을 눌러주세요";
                   _saveToFirebase('gemini', videoMessage);
                 }
-                
+
                 if (shouldExit) {
                   // X 버튼을 누른 경우: 오디오 재생 중단 및 홈으로 이동
                   print("✅ [LiveCamera] X 버튼 클릭 감지 - 오디오 재생 중단 및 홈으로 이동");
-                  
+
                   // 1. 현재 재생 중인 오디오 중단
                   _audioPlayer?.stop();
                   _isPlayingAudio = false;
-                  
+
                   // 2. 오디오 큐 초기화
                   _audioQueue.clear();
                   _currentTurnAudioBuffer = null;
-                  
+
                   // 3. 엘리홈으로 이동
                   if (_onExitRequested != null) {
                     _onExitRequested!();
@@ -587,7 +617,8 @@ class LiveCameraService {
             }
           },
           onError: (error) {
-            if (error.toString().contains('1011') || error.toString().contains('internal error')) {
+            if (error.toString().contains('1011') ||
+                error.toString().contains('internal error')) {
               print("⚠️ [LiveCamera] 백엔드 서버 오류 (1011)");
               _channel?.sink.close();
               _channel = null;
@@ -604,7 +635,7 @@ class LiveCameraService {
           },
           cancelOnError: true,
         );
-        
+
         // 오디오 레코더 초기화
         print("🎤 [LiveCamera] 오디오 레코더 초기화");
         try {
@@ -619,34 +650,38 @@ class LiveCameraService {
         } catch (e) {
           print("⚠️ [LiveCamera] 오디오 레코더 초기화 실패: $e");
         }
-        
+
         // 비디오 프레임 전송 (0.5초마다)
-        _videoTimer = Timer.periodic(const Duration(milliseconds: 500), (timer) async {
-          if (!_isStreaming || _cameraController == null || !_cameraController!.value.isInitialized || _channel == null) {
+        _videoTimer = Timer.periodic(const Duration(milliseconds: 500), (
+          timer,
+        ) async {
+          if (!_isStreaming ||
+              _cameraController == null ||
+              !_cameraController!.value.isInitialized ||
+              _channel == null) {
             return;
           }
-          
+
           try {
             final image = await _cameraController!.takePicture().timeout(
               const Duration(seconds: 2),
               onTimeout: () => throw TimeoutException('카메라 이미지 캡처 시간 초과'),
             );
-            
+
             final imageFile = File(image.path);
             if (!await imageFile.exists()) {
               return;
             }
-            
+
             final imageBytes = await imageFile.readAsBytes().timeout(
               const Duration(seconds: 2),
               onTimeout: () => throw TimeoutException('이미지 파일 읽기 시간 초과'),
             );
-            
+
             final base64Image = base64Encode(imageBytes);
-            _channel!.sink.add(jsonEncode({
-              'type': 'image',
-              'data': base64Image,
-            }));
+            _channel!.sink.add(
+              jsonEncode({'type': 'image', 'data': base64Image}),
+            );
           } catch (e) {
             // 에러 무시하고 계속 진행
           }
@@ -654,7 +689,7 @@ class LiveCameraService {
       } else {
         print("⚠️ [LiveCamera] 백엔드 연결이 없어 스트리밍을 시작하지 않습니다.");
       }
-      
+
       print("✅ [LiveCamera] 스트리밍 시작 완료");
       return true;
     } catch (e) {
@@ -662,7 +697,7 @@ class LiveCameraService {
       return false;
     }
   }
-  
+
   // 공식 예제 패턴: 오디오 청크를 현재 턴 버퍼에 계속 이어붙임
   // Python 예제의 wf.writeframes(response.data)와 동일한 패턴
   void _appendAudioChunk(Uint8List audioBytes) {
@@ -679,20 +714,32 @@ class LiveCameraService {
       }
 
       // 공식 예제 패턴: 청크를 버퍼에 이어붙임 (끝까지 계속 누적)
-      final newBuffer = Uint8List(_currentTurnAudioBuffer!.length + audioBytes.length);
-      newBuffer.setRange(0, _currentTurnAudioBuffer!.length, _currentTurnAudioBuffer!);
-      newBuffer.setRange(_currentTurnAudioBuffer!.length, newBuffer.length, audioBytes);
+      final newBuffer = Uint8List(
+        _currentTurnAudioBuffer!.length + audioBytes.length,
+      );
+      newBuffer.setRange(
+        0,
+        _currentTurnAudioBuffer!.length,
+        _currentTurnAudioBuffer!,
+      );
+      newBuffer.setRange(
+        _currentTurnAudioBuffer!.length,
+        newBuffer.length,
+        audioBytes,
+      );
       _currentTurnAudioBuffer = newBuffer;
 
-      print("🔊 [LiveCamera] 오디오 청크 추가: ${audioBytes.length} bytes (누적: ${_currentTurnAudioBuffer!.length} bytes)");
-      
+      print(
+        "🔊 [LiveCamera] 오디오 청크 추가: ${audioBytes.length} bytes (누적: ${_currentTurnAudioBuffer!.length} bytes)",
+      );
+
       // 중요: turn_complete 신호가 올 때만 오디오를 재생
       // 오디오 청크는 버퍼에만 누적하고, 재생은 turn_complete 신호에서 처리
     } catch (e) {
       print("❌ [LiveCamera] 오디오 청크 추가 실패: $e");
     }
   }
-  
+
   // 공식 예제 패턴: 턴이 끝날 때까지 받은 모든 오디오를 WAV로 변환하고 재생
   // Python 예제의 wf.close()와 재생 시작에 해당
   Future<void> _finalizeAndPlayCurrentTurn() async {
@@ -711,41 +758,57 @@ class LiveCameraService {
       // 공식 문서: "출력은 샘플링 레이트 24kHz를 사용합니다"
       // 버퍼를 사용하기 전에 복사 (버퍼를 null로 설정하기 전에 사용)
       final bufferToUse = _currentTurnAudioBuffer!;
-      final wavBytes = _pcmToWav(bufferToUse, sampleRate: 24000, channels: 1, bitsPerSample: 16);
-      
+      final wavBytes = _pcmToWav(
+        bufferToUse,
+        sampleRate: 24000,
+        channels: 1,
+        bitsPerSample: 16,
+      );
+
       // 임시 파일로 저장
       final tempDir = Directory.systemTemp;
-      final tempFile = File('${tempDir.path}/ai_audio_turn_${DateTime.now().millisecondsSinceEpoch}.wav');
+      final tempFile = File(
+        '${tempDir.path}/ai_audio_turn_${DateTime.now().millisecondsSinceEpoch}.wav',
+      );
       await tempFile.writeAsBytes(wavBytes);
-      
-      print("🔊 [LiveCamera] 턴 완료 - 오디오 파일 생성: ${wavBytes.length} bytes (원본 PCM: ${bufferToUse.length} bytes)");
-      
+
+      print(
+        "🔊 [LiveCamera] 턴 완료 - 오디오 파일 생성: ${wavBytes.length} bytes (원본 PCM: ${bufferToUse.length} bytes)",
+      );
+
       // 중요: WAV 파일을 만든 후 즉시 버퍼를 null로 설정하여 다음 턴을 준비
       // 다음 오디오 청크가 오면 _appendAudioChunk에서 자동으로 새 버퍼를 초기화함
       _currentTurnAudioBuffer = null; // 다음 턴을 위해 즉시 초기화
       print("🔊 [LiveCamera] 오디오 버퍼 초기화 완료 (다음 턴 준비, 재생은 계속됨)");
-      
+
       // 공식 예제 패턴: 중간에 stop/reset 하지 않고 끝까지 재생
       // 재생 중이 아니면 즉시 재생, 재생 중이면 큐에 추가
       if (!_isPlayingAudio) {
         _isPlayingAudio = true;
-        
+
         // ⭐ 중요: 볼륨을 명시적으로 최대로 설정 후 재생
         try {
           await _audioPlayer!.setVolume(1.0);
           print("🔊 [LiveCamera] 볼륨 설정 완료: 1.0");
-          
+
           // 파일 존재 확인
           if (!await tempFile.exists()) {
             print("❌ [LiveCamera] 오디오 파일이 존재하지 않습니다: ${tempFile.path}");
             _isPlayingAudio = false;
             return;
           }
-          
-          print("🔊 [LiveCamera] 오디오 파일 재생 시도: ${tempFile.path} (크기: ${wavBytes.length} bytes)");
-          await _audioPlayer!.play(DeviceFileSource(tempFile.path), volume: 1.0);
-          print("✅ [LiveCamera] 오디오 재생 시작 성공: ${wavBytes.length} bytes (볼륨: 100%)");
-          
+
+          print(
+            "🔊 [LiveCamera] 오디오 파일 재생 시도: ${tempFile.path} (크기: ${wavBytes.length} bytes)",
+          );
+          await _audioPlayer!.play(
+            DeviceFileSource(tempFile.path),
+            volume: 1.0,
+          );
+          print(
+            "✅ [LiveCamera] 오디오 재생 시작 성공: ${wavBytes.length} bytes (볼륨: 100%)",
+          );
+
           // 재생 상태 확인 (1초 후)
           Future.delayed(const Duration(seconds: 1), () {
             if (_audioPlayer != null) {
@@ -760,30 +823,32 @@ class LiveCameraService {
           _isPlayingAudio = false;
           // 재생 실패해도 계속 진행
         }
-        
+
         // 재생 완료 이벤트 등록
-        _audioPlayer!.onPlayerComplete.first.then((_) {
-          print("✅ [LiveCamera] 오디오 재생 완료");
-          tempFile.delete().catchError((_) => tempFile);
-          _isPlayingAudio = false;
-          
-          // 버퍼는 이미 _finalizeAndPlayCurrentTurn에서 초기화되었으므로 여기서는 초기화하지 않음
-          
-          // 큐에 대기 중인 오디오가 있으면 재생
-          if (_audioQueue.isNotEmpty) {
-            _processAudioQueue();
-          }
-        }).catchError((error) {
-          print("❌ [LiveCamera] 오디오 재생 완료 이벤트 에러: $error");
-          _isPlayingAudio = false;
-          // 에러가 나도 버퍼는 이미 초기화되었으므로 다시 초기화할 필요 없음
-        });
+        _audioPlayer!.onPlayerComplete.first
+            .then((_) {
+              print("✅ [LiveCamera] 오디오 재생 완료");
+              tempFile.delete().catchError((_) => tempFile);
+              _isPlayingAudio = false;
+
+              // 버퍼는 이미 _finalizeAndPlayCurrentTurn에서 초기화되었으므로 여기서는 초기화하지 않음
+
+              // 큐에 대기 중인 오디오가 있으면 재생
+              if (_audioQueue.isNotEmpty) {
+                _processAudioQueue();
+              }
+            })
+            .catchError((error) {
+              print("❌ [LiveCamera] 오디오 재생 완료 이벤트 에러: $error");
+              _isPlayingAudio = false;
+              // 에러가 나도 버퍼는 이미 초기화되었으므로 다시 초기화할 필요 없음
+            });
       } else {
         // 재생 중이면 큐에 추가 (연속 재생)
         _audioQueue.add(tempFile);
         print("🔊 [LiveCamera] 오디오 큐에 추가 (재생 중, 큐 크기: ${_audioQueue.length})");
       }
-      
+
       // 버퍼는 이미 위에서 null로 초기화되었으므로 여기서는 추가 작업 불필요
     } catch (e) {
       print("❌ [LiveCamera] 턴 완료 처리 실패: $e");
@@ -792,15 +857,14 @@ class LiveCameraService {
     }
   }
 
-  
   // 오디오 큐 처리 (연속 재생)
   Future<void> _processAudioQueue() async {
     if (_isPlayingAudio || _audioQueue.isEmpty) {
       return;
     }
-    
+
     _isPlayingAudio = true;
-    
+
     try {
       await _playNextAudio();
     } catch (e) {
@@ -808,7 +872,7 @@ class LiveCameraService {
       _isPlayingAudio = false;
     }
   }
-  
+
   // 다음 오디오 재생 (내부 함수)
   Future<void> _playNextAudio() async {
     if (_audioQueue.isEmpty || _audioPlayer == null) {
@@ -816,60 +880,66 @@ class LiveCameraService {
       print("⚠️ [LiveCamera] 오디오 큐가 비어있거나 플레이어가 없습니다");
       return;
     }
-    
+
     final audioFile = _audioQueue.removeAt(0);
     final fileSize = await audioFile.length();
-    
+
     try {
       // ⭐ 중요: 볼륨을 명시적으로 최대로 설정 후 재생
       await _audioPlayer!.setVolume(1.0);
       print("🔊 [LiveCamera] 볼륨 설정 완료: 1.0");
-      
+
       // 파일 존재 확인
       if (!await audioFile.exists()) {
         print("❌ [LiveCamera] 오디오 파일이 존재하지 않습니다: ${audioFile.path}");
         _isPlayingAudio = false;
         return;
       }
-      
-      print("🔊 [LiveCamera] 오디오 파일 재생 시도: ${audioFile.path} (크기: $fileSize bytes)");
-      await _audioPlayer!.play(DeviceFileSource(audioFile.path), volume: 1.0);
-      print("✅ [LiveCamera] 오디오 재생 시작 성공: $fileSize bytes (큐 남은 개수: ${_audioQueue.length}, 볼륨: 100%)");
-      
-      // 재생 완료 이벤트 등록 (한 번만 실행)
-      _audioPlayer!.onPlayerComplete.first.then((_) {
-        print("✅ [LiveCamera] 오디오 재생 완료: ${fileSize} bytes");
-        
-        // 파일 삭제
-        audioFile.delete().catchError((_) {
-          return audioFile;
-        });
 
-        // 다음 오디오 재생 (즉시)
-        if (_audioQueue.isNotEmpty) {
-          print("🔄 [LiveCamera] 다음 오디오 재생 시작 (큐: ${_audioQueue.length}개)");
-          _playNextAudio();
-        } else {
-          _isPlayingAudio = false;
-          print("✅ [LiveCamera] 오디오 큐 재생 완료 (모든 파일 재생됨)");
-        }
-      }).catchError((error) {
-        print("❌ [LiveCamera] 오디오 재생 완료 이벤트 에러: $error");
-        // 에러가 나도 다음 오디오 재생 시도
-        if (_audioQueue.isNotEmpty) {
-          Future.delayed(const Duration(milliseconds: 50), () {
-            _playNextAudio();
+      print(
+        "🔊 [LiveCamera] 오디오 파일 재생 시도: ${audioFile.path} (크기: $fileSize bytes)",
+      );
+      await _audioPlayer!.play(DeviceFileSource(audioFile.path), volume: 1.0);
+      print(
+        "✅ [LiveCamera] 오디오 재생 시작 성공: $fileSize bytes (큐 남은 개수: ${_audioQueue.length}, 볼륨: 100%)",
+      );
+
+      // 재생 완료 이벤트 등록 (한 번만 실행)
+      _audioPlayer!.onPlayerComplete.first
+          .then((_) {
+            print("✅ [LiveCamera] 오디오 재생 완료: ${fileSize} bytes");
+
+            // 파일 삭제
+            audioFile.delete().catchError((_) {
+              return audioFile;
+            });
+
+            // 다음 오디오 재생 (즉시)
+            if (_audioQueue.isNotEmpty) {
+              print("🔄 [LiveCamera] 다음 오디오 재생 시작 (큐: ${_audioQueue.length}개)");
+              _playNextAudio();
+            } else {
+              _isPlayingAudio = false;
+              print("✅ [LiveCamera] 오디오 큐 재생 완료 (모든 파일 재생됨)");
+            }
+          })
+          .catchError((error) {
+            print("❌ [LiveCamera] 오디오 재생 완료 이벤트 에러: $error");
+            // 에러가 나도 다음 오디오 재생 시도
+            if (_audioQueue.isNotEmpty) {
+              Future.delayed(const Duration(milliseconds: 50), () {
+                _playNextAudio();
+              });
+            } else {
+              _isPlayingAudio = false;
+            }
           });
-        } else {
-          _isPlayingAudio = false;
-        }
-      });
     } catch (e) {
       print("❌ [LiveCamera] 오디오 파일 재생 실패: $e");
       audioFile.delete().catchError((_) {
         return audioFile;
       });
-      
+
       // 재생 실패 시 다음 오디오 재생 시도 (짧은 지연)
       if (_audioQueue.isNotEmpty) {
         await Future.delayed(const Duration(milliseconds: 50));
@@ -879,48 +949,47 @@ class LiveCameraService {
       }
     }
   }
-  
-  
+
   // 스트리밍 중지
   Future<void> stopStreaming() async {
     _isStreaming = false;
-    
+
     _videoTimer?.cancel();
     _videoTimer = null;
-    
+
     _audioTimer?.cancel();
     _audioTimer = null;
-    
+
     await _audioStreamSubscription?.cancel();
     _audioStreamSubscription = null;
-    
+
     await _audioRecorder?.stop();
     await _audioRecorder?.dispose();
     _audioRecorder = null;
-    
+
     await _websocketSubscription?.cancel();
     _websocketSubscription = null;
-    
+
     await _channel?.sink.close();
     _channel = null;
-    
+
     await _cameraController?.dispose();
     _cameraController = null;
-    
+
     // 오디오 큐 초기화
     _audioQueue.clear();
     _pendingAudioChunks.clear();
     _audioFlushTimer?.cancel();
     _audioFlushTimer = null;
-    
+
     // 공식 예제 패턴: 현재 턴 버퍼 초기화
     _currentTurnAudioBuffer = null;
-    
+
     // 사용자 말하기 감지 타이머 초기화
     _userSpeechTimer?.cancel();
     _userSpeechTimer = null;
     _lastAudioSentTime = null;
-    
+
     // Firebase 세션 상태 업데이트
     if (_sessionId != null) {
       try {
@@ -932,48 +1001,53 @@ class LiveCameraService {
         // 에러 무시
       }
     }
-    
+
     print("✅ [LiveCamera] 스트리밍 중지 완료");
   }
-  
+
   // 카메라 컨트롤러 반환
   CameraController? get cameraController => _cameraController;
-  
+
   // 한국어만 포함하는지 확인
   bool _containsKorean(String text) {
     final koreanRegex = RegExp(r'[가-힣ㄱ-ㅎㅏ-ㅣ]');
     return koreanRegex.hasMatch(text);
   }
-  
+
   // 영어만 있는지 확인
   bool _isEnglishOnly(String text) {
     final englishOnlyRegex = RegExp(r"^[a-zA-Z0-9\s\.,!?;:\-()]+$");
     return englishOnlyRegex.hasMatch(text.trim()) && !_containsKorean(text);
   }
-  
+
   // PCM을 WAV로 변환
-  Uint8List _pcmToWav(Uint8List pcmData, {required int sampleRate, required int channels, required int bitsPerSample}) {
+  Uint8List _pcmToWav(
+    Uint8List pcmData, {
+    required int sampleRate,
+    required int channels,
+    required int bitsPerSample,
+  }) {
     final dataSize = pcmData.length;
     final byteRate = sampleRate * channels * (bitsPerSample ~/ 8);
     final blockAlign = channels * (bitsPerSample ~/ 8);
-    
+
     final wavHeader = Uint8List(44);
     var offset = 0;
-    
+
     void writeInt(int value, int bytes) {
       for (int i = 0; i < bytes; i++) {
         wavHeader[offset + i] = (value >> (i * 8)) & 0xFF;
       }
       offset += bytes;
     }
-    
+
     void writeString(String str) {
       for (int i = 0; i < str.length; i++) {
         wavHeader[offset + i] = str.codeUnitAt(i);
       }
       offset += str.length;
     }
-    
+
     writeString('RIFF');
     writeInt(dataSize + 36, 4);
     writeString('WAVE');
@@ -987,25 +1061,23 @@ class LiveCameraService {
     writeInt(bitsPerSample, 2);
     writeString('data');
     writeInt(dataSize, 4);
-    
+
     return Uint8List.fromList([...wavHeader, ...pcmData]);
   }
-  
+
   // 스트리밍 상태
   bool get isStreaming => _isStreaming;
-  
+
   // 엘리홈으로 이동 콜백 설정
   void setOnExitRequested(VoidCallback? callback) {
     _onExitRequested = callback;
   }
-  
+
   // X 버튼 클릭 시 호출: 진단 화면 종료 신호 전송
   void closeDiagnosisAndExit() {
     if (_channel != null) {
       try {
-        _channel!.sink.add(jsonEncode({
-          'type': 'close_diagnosis',
-        }));
+        _channel!.sink.add(jsonEncode({'type': 'close_diagnosis'}));
         print("✅ [LiveCamera] 진단 화면 종료 신호 전송 (X 버튼 클릭)");
       } catch (e) {
         print("❌ [LiveCamera] 종료 신호 전송 실패: $e");
@@ -1014,13 +1086,16 @@ class LiveCameraService {
       print("⚠️ [LiveCamera] WebSocket 연결이 없어 종료 신호를 전송할 수 없습니다.");
     }
   }
-  
+
   // 오디오 녹음 시작 (내부 함수)
   Future<void> _startAudioRecording() async {
-    if (_audioRecorder == null || !_isRecordingEnabled || !_isStreaming || _channel == null) {
+    if (_audioRecorder == null ||
+        !_isRecordingEnabled ||
+        !_isStreaming ||
+        _channel == null) {
       return;
     }
-    
+
     try {
       // 공식 예제 패턴: 16kHz, 16비트 PCM, 모노 오디오 전송
       const config = RecordConfig(
@@ -1037,7 +1112,7 @@ class LiveCameraService {
           audioManagerMode: AudioManagerMode.modeInCommunication,
         ),
       );
-      
+
       Stream<Uint8List> stream;
       try {
         print("🎤 [LiveCamera] 오디오 스트림 시작 시도...");
@@ -1047,21 +1122,23 @@ class LiveCameraService {
         print("⚠️ [LiveCamera] 맞춤 녹음 설정 실패, 기본 설정으로 재시도: $e");
         print("⚠️ [LiveCamera] 스택 트레이스: $stackTrace");
         try {
-          stream = await _audioRecorder!.startStream(const RecordConfig(
-            encoder: AudioEncoder.pcm16bits,
-            sampleRate: 16000,
-            numChannels: 1,
-            autoGain: false,
-            echoCancel: false,
-            noiseSuppress: false,
-          ));
+          stream = await _audioRecorder!.startStream(
+            const RecordConfig(
+              encoder: AudioEncoder.pcm16bits,
+              sampleRate: 16000,
+              numChannels: 1,
+              autoGain: false,
+              echoCancel: false,
+              noiseSuppress: false,
+            ),
+          );
           print("✅ [LiveCamera] 기본 설정으로 오디오 스트림 시작 성공");
         } catch (e2) {
           print("❌ [LiveCamera] 기본 설정으로도 오디오 스트림 시작 실패: $e2");
           return;
         }
       }
-      
+
       // 오디오 데이터 전송 (사용자 말하기 감지 포함)
       _audioStreamSubscription = stream.listen(
         (data) {
@@ -1071,25 +1148,33 @@ class LiveCameraService {
               if (data.length < 320) {
                 return;
               }
-              
+
               final base64Audio = base64Encode(data);
-              _channel!.sink.add(jsonEncode({
-                'type': 'audio',
-                'data': base64Audio,
-              }));
-              
+              _channel!.sink.add(
+                jsonEncode({'type': 'audio', 'data': base64Audio}),
+              );
+
               // 사용자 말하기 감지: 마지막 오디오 전송 시간 업데이트
               _lastAudioSentTime = DateTime.now();
-              
+
               // 사용자 말하기 타이머 재설정
               _userSpeechTimer?.cancel();
               _userSpeechTimer = Timer(const Duration(seconds: 2), () async {
-                if (_isStreaming && _channel != null && _lastAudioSentTime != null && _isRecordingEnabled) {
-                  final timeSinceLastAudio = DateTime.now().difference(_lastAudioSentTime!);
+                if (_isStreaming &&
+                    _channel != null &&
+                    _lastAudioSentTime != null &&
+                    _isRecordingEnabled) {
+                  final timeSinceLastAudio = DateTime.now().difference(
+                    _lastAudioSentTime!,
+                  );
                   if (timeSinceLastAudio.inSeconds >= 2) {
                     try {
-                      _channel!.sink.add(jsonEncode({'type': 'user_speech_end'}));
-                      print("✅ [LiveCamera] 사용자 말하기 종료 감지 - user_speech_end 신호 전송");
+                      _channel!.sink.add(
+                        jsonEncode({'type': 'user_speech_end'}),
+                      );
+                      print(
+                        "✅ [LiveCamera] 사용자 말하기 종료 감지 - user_speech_end 신호 전송",
+                      );
                       _lastAudioSentTime = null;
                     } catch (e) {
                       print("⚠️ [LiveCamera] 사용자 말하기 종료 신호 전송 실패: $e");

@@ -1,17 +1,10 @@
-import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:http/http.dart' as http;
-import '../config/api_config.dart';
 import 'live_screen.dart';
-import 'live_screen_with_buttons.dart';
-import 'video_production_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../models/chat_message.dart';
 import '../services/api_service.dart';
-import 'live_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -21,13 +14,11 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> {
-  // Figma 프레임 크기: 360x800
-  static const double figmaWidth = 360;
-  static const double figmaHeight = 800;
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final FocusNode _textFieldFocusNode = FocusNode();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
   final String _userId = 'user_001'; // 사용자 ID (나중에 실제 사용자 ID로 변경 가능)
   // Firestore 경로: chat_rooms/room_{userId}/messages (Python 서버와 Spring Boot가 사용하는 경로)
   String _roomId = 'room_user_001'; // 채팅방 ID: room_user_001 형식 (state 변수로 변경)
@@ -39,160 +30,50 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _pendingUserMessage; // 전송 중인 사용자 메시지 (즉시 표시용)
   bool _isMenuOpen = false; // 메뉴 열림/닫힘 상태
 
-  final TextEditingController _textController = TextEditingController();
-  final ScrollController _scrollController = ScrollController();
-  final List<Map<String, String>> _messages = []; // 'sender', 'text'
-  bool _isLoading = false;
-
-  // 백엔드 API URL
-  String get _baseUrl => ApiConfig.baseUrl;
-  String get _apiUrl => '$_baseUrl/chat';
-
-  @override
-  void initState() {
-    super.initState();
-    // 서버에서 채팅 기록 불러오기
-    _fetchChatHistory();
-  }
-
-  Future<void> _fetchChatHistory() async {
-    setState(() {
-      _isLoading = true;
-    });
-
-    try {
-      // API 호출 (GET /chat/history)
-      final response = await http.get(
-        Uri.parse('$_baseUrl/chat/history?user_id=test_user'),
-      );
-
-      if (response.statusCode == 200) {
-        final decodedBody = utf8.decode(response.bodyBytes);
-        final data = jsonDecode(decodedBody);
-        final List<dynamic> history = data['messages'] ?? [];
-
-        if (history.isNotEmpty) {
-          setState(() {
-            _messages.clear();
-            for (var msg in history) {
-              _messages.add({
-                'sender': msg['sender'] ?? 'ai',
-                'text': msg['text'] ?? msg['content'] ?? '',
-              });
-            }
-          });
-          // 화면이 그려진 후 스크롤 이동
-          _scrollToBottom();
-        } else {
-          // 기록이 없으면 기본 환영 메시지
-          _addMessage('ai', '안녕하세요! LG전자 가전제품 전문 상담원 ThinQ 봇입니다.\n무엇을 도와드릴까요?');
-        }
-      } else {
-        print('History fetch failed: ${response.statusCode}');
-        _addMessage('ai', '안녕하세요! LG전자 가전제품 전문 상담원 ThinQ 봇입니다.\n무엇을 도와드릴까요?');
-      }
-    } catch (e) {
-      print('History fetch error: $e');
-      _addMessage('ai', '안녕하세요! LG전자 가전제품 전문 상담원 ThinQ 봇입니다.\n무엇을 도와드릴까요?');
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
-    }
-  }
-
-  void _addMessage(String sender, String text) {
-    setState(() {
-      _messages.add({'sender': sender, 'text': text});
-    });
-    _scrollToBottom();
-  }
-
-  void _scrollToBottom() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
-      }
-    });
-  }
-
-  Future<void> _sendMessage() async {
-    final text = _textController.text.trim();
-    if (text.isEmpty) return;
-
-    _textController.clear();
-    _addMessage('user', text);
-
-    setState(() {
-      _isLoading = true;
-    });
-
-    try {
-      final response = await http.post(
-        Uri.parse(_apiUrl),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'user_message': text,
-          'user_id': 'test_user', // 실제 앱에서는 고유 ID 사용 권장
-        }),
-      );
-
-      if (response.statusCode == 200) {
-        // UTF-8 디코딩 처리
-        final decodedBody = utf8.decode(response.bodyBytes);
-        final data = jsonDecode(decodedBody);
-        final answer = data['answer'] ?? '죄송합니다. 답변을 받을 수 없습니다.';
-        _addMessage('ai', answer);
-      } else {
-        _addMessage('ai', '오류가 발생했습니다. (Status: ${response.statusCode})');
-      }
-    } catch (e) {
-      _addMessage('ai', '서버 연결에 실패했습니다.\n$e');
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
-    }
-  }
-
   @override
   void initState() {
     super.initState();
     print('🚀 [ChatScreen] initState 호출됨');
     print('🚀 [ChatScreen] userId: $_userId, roomId: $_roomId');
-    print('🚀 [ChatScreen] Firestore 경로: $_chatRoomsCollection/$_roomId/$_messagesSubcollection');
-    
+    print(
+      '🚀 [ChatScreen] Firestore 경로: $_chatRoomsCollection/$_roomId/$_messagesSubcollection',
+    );
+
     // 화면 진입 시 새 room 생성 및 초기화
     _initializeNewRoom();
-    
+
     // 화면이 로드되면 자동으로 키보드가 올라오도록
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _textFieldFocusNode.requestFocus();
       print('🚀 [ChatScreen] 포커스 요청 완료');
     });
   }
-  
+
+  @override
+  void dispose() {
+    _messageController.dispose();
+    _scrollController.dispose();
+    _textFieldFocusNode.dispose();
+    super.dispose();
+  }
+
   // 기존 room 중 가장 높은 번호 찾아서 참조 (화면 진입 시 호출)
   Future<void> _initializeNewRoom() async {
     try {
       print('🔄 [ChatScreen] 기존 room 중 가장 높은 번호 찾기 시작');
-      
+
       // 1. chat_rooms 컬렉션에서 room_user_로 시작하는 모든 문서 조회
       final roomsSnapshot = await _firestore
           .collection(_chatRoomsCollection)
           .get();
-      
+
       print('📋 [ChatScreen] 전체 rooms 조회 완료: ${roomsSnapshot.docs.length}개');
-      
+
       // 2. room_user_로 시작하는 문서들 중에서 숫자 부분 추출하여 가장 높은 번호 찾기
       int maxNumber = 0;
       String? maxRoomId;
       final roomUserPattern = RegExp(r'^room_user_(\d+)$');
-      
+
       for (var doc in roomsSnapshot.docs) {
         final roomId = doc.id;
         final match = roomUserPattern.firstMatch(roomId);
@@ -205,12 +86,14 @@ class _ChatScreenState extends State<ChatScreen> {
           print('📋 [ChatScreen] room 발견: $roomId (숫자: $number)');
         }
       }
-      
+
       // 3. 가장 높은 번호의 room_id 사용 (room이 없으면 기본값 사용)
       final targetRoomId = maxRoomId ?? 'room_user_001';
-      
-      print('✅ [ChatScreen] 가장 높은 번호의 room_id 선택: $targetRoomId (최대값: $maxNumber)');
-      
+
+      print(
+        '✅ [ChatScreen] 가장 높은 번호의 room_id 선택: $targetRoomId (최대값: $maxNumber)',
+      );
+
       // 4. _roomId 업데이트 및 화면 새로고침
       // _isSending 상태를 보존하기 위해 현재 상태를 저장
       final currentIsSending = _isSending;
@@ -222,12 +105,15 @@ class _ChatScreenState extends State<ChatScreen> {
           _lastSentMessage = null;
           _lastSentTime = null;
         });
-        print('✅ [ChatScreen] room 초기화 완료: $_roomId (isSending 유지: $_isSending)');
+        print(
+          '✅ [ChatScreen] room 초기화 완료: $_roomId (isSending 유지: $_isSending)',
+        );
       }
-      
+
       print('✅ [ChatScreen] room 초기화 완료: $_roomId');
-      print('✅ [ChatScreen] Firestore 경로: $_chatRoomsCollection/$_roomId/$_messagesSubcollection');
-      
+      print(
+        '✅ [ChatScreen] Firestore 경로: $_chatRoomsCollection/$_roomId/$_messagesSubcollection',
+      );
     } catch (e) {
       print('❌ [ChatScreen] room 초기화 실패: $e');
       // 초기화 실패 시 기본값 유지
@@ -235,19 +121,12 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  @override
-  void dispose() {
-    _messageController.dispose();
-    _scrollController.dispose();
-    _textFieldFocusNode.dispose();
-    super.dispose();
-  }
-
   // AI 응답 후 동영상 안내 메시지 저장
   Future<void> _saveVideoMessage() async {
     try {
-      const videoMessage = "지금까지 대화 나눈 내용을 바탕으로 ai 기반 문제 해결 영상을 보고 싶다면 오른쪽 위에 동영상 버튼을 눌러주세요";
-      
+      const videoMessage =
+          "지금까지 대화 나눈 내용을 바탕으로 ai 기반 문제 해결 영상을 보고 싶다면 오른쪽 위에 동영상 버튼을 눌러주세요";
+
       // 마지막 메시지만 확인: 마지막 메시지가 동영상 안내 메시지가 아닐 때만 추가
       final messagesSnapshot = await _firestore
           .collection(_chatRoomsCollection)
@@ -256,7 +135,7 @@ class _ChatScreenState extends State<ChatScreen> {
           .orderBy('timestamp', descending: true)
           .limit(1)
           .get();
-      
+
       // 마지막 메시지가 동영상 안내 메시지인지 확인
       if (messagesSnapshot.docs.isNotEmpty) {
         final lastMessage = messagesSnapshot.docs.first.data();
@@ -265,24 +144,25 @@ class _ChatScreenState extends State<ChatScreen> {
           return;
         }
       }
-      
+
       // timestamp를 "2025-12-07 00:43:59" 형식으로 포맷
       final now = DateTime.now().toLocal();
-      final formattedTimestamp = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
-      
+      final formattedTimestamp =
+          '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
+
       final messageData = {
         'text': videoMessage,
         'sender': 'ai',
         'message_type': 'chat',
         'timestamp': formattedTimestamp,
       };
-      
+
       await _firestore
           .collection(_chatRoomsCollection)
           .doc(_roomId)
           .collection(_messagesSubcollection)
           .add(messageData);
-      
+
       print('✅ [ChatScreen] 동영상 안내 메시지 저장 완료');
     } catch (e) {
       print('❌ [ChatScreen] 동영상 안내 메시지 저장 실패: $e');
@@ -307,8 +187,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
     // 중복 전송 방지 2: 같은 메시지가 짧은 시간 내에 다시 전송되는 경우
     final now = DateTime.now();
-    if (_lastSentMessage == text && 
-        _lastSentTime != null && 
+    if (_lastSentMessage == text &&
+        _lastSentTime != null &&
         now.difference(_lastSentTime!).inMilliseconds < 2000) {
       print('⚠️ 같은 메시지가 너무 빨리 전송되었습니다. 중복 전송을 방지합니다.');
       return;
@@ -316,7 +196,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
     // 입력 필드 즉시 초기화 (사용자 경험 개선)
     _messageController.clear();
-    
+
     // 전송 시작 및 즉시 UI에 표시
     setState(() {
       _isSending = true;
@@ -338,11 +218,15 @@ class _ChatScreenState extends State<ChatScreen> {
       // 1. 사용자 메시지를 즉시 Firebase에 저장 (Optimistic Update)
       // Python 서버와 동일한 경로: chat_rooms/room_user_001/messages
       print('💾 [Flutter] Firebase 저장 시작 - roomId: $_roomId');
-      print('💾 [Flutter] 저장 경로: $_chatRoomsCollection/$_roomId/$_messagesSubcollection');
-      
+      print(
+        '💾 [Flutter] 저장 경로: $_chatRoomsCollection/$_roomId/$_messagesSubcollection',
+      );
+
       try {
         // room 문서가 존재하는지 확인하고 없으면 생성
-        final roomRef = _firestore.collection(_chatRoomsCollection).doc(_roomId);
+        final roomRef = _firestore
+            .collection(_chatRoomsCollection)
+            .doc(_roomId);
         final roomDoc = await roomRef.get();
         if (!roomDoc.exists) {
           print('📝 [Flutter] room 문서가 없어서 생성합니다: $_roomId');
@@ -353,34 +237,37 @@ class _ChatScreenState extends State<ChatScreen> {
           });
           print('✅ [Flutter] room 문서 생성 완료');
         }
-        
+
         final userMessageRef = _firestore
             .collection(_chatRoomsCollection)
             .doc(_roomId)
             .collection(_messagesSubcollection)
             .doc();
-        
+
         // timestamp를 "2025-12-07 00:43:59" 형식으로 포맷
         final now = DateTime.now().toLocal();
-        final formattedTimestamp = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
-        
+        final formattedTimestamp =
+            '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
+
         final userMessageData = {
           'text': text,
           'sender': 'user',
           'message_type': 'chat',
           'timestamp': formattedTimestamp,
         };
-        
+
         print('💾 [Flutter] 저장할 데이터: $userMessageData');
         await userMessageRef.set(userMessageData);
-        print('✅ [Flutter] 사용자 메시지를 Firebase에 저장 완료 - 문서 ID: ${userMessageRef.id}');
-        print('✅ [Flutter] 저장 경로: $_chatRoomsCollection/$_roomId/$_messagesSubcollection/${userMessageRef.id}');
-        
+        print(
+          '✅ [Flutter] 사용자 메시지를 Firebase에 저장 완료 - 문서 ID: ${userMessageRef.id}',
+        );
+        print(
+          '✅ [Flutter] 저장 경로: $_chatRoomsCollection/$_roomId/$_messagesSubcollection/${userMessageRef.id}',
+        );
+
         // room 문서의 last_message_at 업데이트
-        await roomRef.update({
-          'last_message_at': FieldValue.serverTimestamp(),
-        });
-        
+        await roomRef.update({'last_message_at': FieldValue.serverTimestamp()});
+
         // Firebase 저장 완료 후 즉시 _pendingUserMessage 제거 (중복 표시 방지)
         // StreamBuilder가 Firebase에서 메시지를 받아서 표시할 것이므로
         // 하지만 _isSending은 명시적으로 true로 유지 (AI 답변을 기다리는 중이므로)
@@ -404,12 +291,17 @@ class _ChatScreenState extends State<ChatScreen> {
       // 2. Spring Boot 서버로 메시지 전송 (백엔드가 AI 답변을 생성하고 Firebase에 저장함)
       // 프론트엔드에서는 AI 답변을 저장하지 않음 (백엔드가 저장하는 것을 기다림)
       print('📤 [Flutter] 서버로 메시지 전송 시작 (현재 _isSending: $_isSending)');
-      await ApiService.sendMessage(_userId, text, sessionId: _roomId, source: 'chat');
+      await ApiService.sendMessage(
+        _userId,
+        text,
+        sessionId: _roomId,
+        source: 'chat',
+      );
 
       print('✅ [Flutter] 서버로 메시지 전송 완료');
       print('⏳ [Flutter] 백엔드에서 AI 답변을 생성하고 Firebase에 저장 중...');
       print('⏳ [Flutter] 현재 _isSending 상태: $_isSending (true여야 함)');
-      
+
       // _isSending이 여전히 true인지 확인하고 강제로 유지
       if (!_isSending) {
         print('⚠️ [Flutter] 경고: _isSending이 false로 바뀌었습니다! 다시 true로 설정합니다.');
@@ -448,7 +340,7 @@ class _ChatScreenState extends State<ChatScreen> {
     // AI 답변이 Firestore에 저장될 때까지 로딩 상태 유지
   }
 
-    // 스크롤을 맨 아래로 이동
+  // 스크롤을 맨 아래로 이동
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
@@ -470,7 +362,6 @@ class _ChatScreenState extends State<ChatScreen> {
           .collection(_messagesSubcollection)
           .snapshots(),
       builder: (context, snapshot) {
-        // 디버깅 로그
         print('📡 [Firestore] StreamBuilder 상태: ${snapshot.connectionState}');
         if (snapshot.connectionState == ConnectionState.waiting) {
           print('⏳ [Firestore] 데이터 로딩 중...');
@@ -485,215 +376,46 @@ class _ChatScreenState extends State<ChatScreen> {
             print('📡 [Firestore] 데이터 없음 (hasData: false)');
           }
         }
-        
-        // 에러가 발생해도 화면을 깨뜨리지 않고 계속 진행
-        // 일시적인 에러는 무시하고 기존 메시지나 빈 화면 표시
+
         if (snapshot.hasError) {
           print('⚠️ [Firestore] 읽기 오류 (무시하고 계속 진행): ${snapshot.error}');
-          print('⚠️ [Firestore] 경로: $_chatRoomsCollection/$_roomId/$_messagesSubcollection');
-          
-          // 에러가 발생했지만 기존 데이터가 있으면 계속 표시
-          if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
-            print('✅ [Firestore] 기존 데이터가 있으므로 계속 표시');
-            // 아래 코드로 계속 진행
-          } else {
-            // 데이터가 없으면 빈 화면 표시 (에러 화면 대신)
+          print(
+            '⚠️ [Firestore] 경로: $_chatRoomsCollection/$_roomId/$_messagesSubcollection',
+          );
+
+          if (!(snapshot.hasData && snapshot.data!.docs.isNotEmpty)) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(
-                child: CircularProgressIndicator(),
-              );
+              return const Center(child: CircularProgressIndicator());
             }
             return const Center(
               child: Text(
                 '메시지를 입력해주세요',
-                style: TextStyle(
-                  color: Colors.grey,
-                  fontSize: 14,
-                ),
+                style: TextStyle(color: Colors.grey, fontSize: 14),
               ),
             );
           }
         }
 
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(
-            child: CircularProgressIndicator(),
-          );
+          return const Center(child: CircularProgressIndicator());
         }
 
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
           return const Center(
             child: Text(
               '메시지를 입력해주세요',
-              style: TextStyle(
-                color: Colors.grey,
-                fontSize: 14,
-              ),
+              style: TextStyle(color: Colors.grey, fontSize: 14),
             ),
-            // 메인 콘텐츠 영역 (전체 메인 콘텐츠 영역) - 피그마: h-[776px], 화면 하단까지 채움
-            // Figma: top:24, left:0, width:360, height:776
-            Positioned(
-              top: 24 * scale,
-              left: 0,
-              right: 0,
-              bottom: 0, // 화면 하단까지 채움
-              child: Container(
-                color: Colors.white,
-                        child: Column(
-                  children: [
-                            // 상단 헤더 바 (높이 고정)
-                            Container(
-                      height: 57 * scale,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          border: Border(
-                            bottom: BorderSide(
-                              color: const Color(0xFFEAEAEB),
-                              width: 1 * scale,
-                            ),
-                          ),
-                        ),
-                        child: Padding(
-                                padding: EdgeInsets.symmetric(
-                                    horizontal: 12 * scale),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              // 뒤로가기 버튼
-                              SizedBox(
-                                width: 24 * scale,
-                                height: 24 * scale,
-                                child: IconButton(
-                                        icon: Icon(Icons.arrow_back,
-                                            size: 24 * scale,
-                                            color: Colors.black),
-                                  onPressed: () {
-                                          Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                                builder: (context) =>
-                                                    const LiveScreenWithButtons()),
-                                          );
-                                  },
-                                  padding: EdgeInsets.zero,
-                                        constraints: const BoxConstraints(),
-                                ),
-                              ),
-                              // "ELLI" 텍스트
-                              Padding(
-                                      padding: EdgeInsets.only(
-                                          left: 8 * scale), // 32 - 24 = 8
-                                child: Align(
-                                  alignment: Alignment.centerLeft,
-                                  child: Text(
-                                    'ELLI',
-                                    style: TextStyle(
-                                      fontFamily: 'Noto Sans',
-                                      fontSize: 18 * scale,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.black,
-                                      letterSpacing: 0.2 * scale,
-                                      height: 20 / 18,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                                    const Spacer(), // 오른쪽 아이콘을 밀어냄
-                              // 상단 오른쪽 아이콘들 (채팅 상단 아이콘.png)
-                              Stack(
-                                children: [
-                                  // 아이콘 이미지
-                                  Image.asset(
-                                    'assets/images/채팅 상단 아이콘.png',
-                                    width: 94.28571319580078 * scale,
-                                    height: 22.285715103149414 * scale,
-                                    fit: BoxFit.contain,
-                                          errorBuilder:
-                                              (context, error, stackTrace) {
-                                      return Container(
-                                        width: 94.28571319580078 * scale,
-                                              height:
-                                                  22.285715103149414 * scale,
-                                              color: Colors.grey
-                                                  .withValues(alpha: 0.3),
-                                      );
-                                    },
-                                  ),
-                                  // 가장 왼쪽 아이콘 클릭 영역 (이미지의 왼쪽 1/3)
-                                  Positioned(
-                                    left: 0,
-                                    top: 0,
-                                          width:
-                                              (94.28571319580078 / 3) * scale,
-                                    height: 22.285715103149414 * scale,
-                                    child: GestureDetector(
-                                      onTap: () {
-                                        // 가장 왼쪽 아이콘 클릭 시 LiveScreen으로 이동
-                                        Navigator.push(
-                                          context,
-                                                MaterialPageRoute(
-                                                    builder: (context) =>
-                                                        const LiveScreen()),
-                                        );
-                                      },
-                                      child: Container(
-                                              color: Colors.transparent,
-                                      ),
-                                    ),
-                                  ),
-                                  // 가운데 아이콘 클릭 영역 (이미지의 가운데 1/3)
-                                  Positioned(
-                                          left: (94.28571319580078 / 3) *
-                                              scale,
-                                    top: 0,
-                                          width:
-                                              (94.28571319580078 / 3) * scale,
-                                    height: 22.285715103149414 * scale,
-                                    child: GestureDetector(
-                                            onTap: () async {
-                                              // 1. 백엔드 실행 요청 (비동기)
-                                              try {
-                                                final url = Uri.parse(
-                                                    '$_baseUrl/generate-video');
-                                                http.post(url).then((response) {
-                                                  print(
-                                                      "Generation trigger response: ${response.statusCode}");
-                                                }).catchError((error) {
-                                                  print(
-                                                      "Generation trigger error: $error");
-                                                });
-                                              } catch (e) {
-                                                print(
-                                                    "Error triggering generation: $e");
-                                              }
-
-                                              // 2. 화면 이동
-                                        Navigator.push(
-                                          context,
-                                                MaterialPageRoute(
-                                                    builder: (context) =>
-                                                        const VideoProductionScreen()),
-                                        );
-                                      },
-                                      child: Container(
-                                              color: Colors.transparent,
-                                      ),
-                                    ),
-                                  ),
-                                ],
           );
         }
 
-        // ChatMessage.fromFirestore 사용 (더 안전한 파싱)
-        // 중복 제거: 문서 ID를 키로 사용하여 같은 문서는 하나만 파싱
-        Map<String, ChatMessage> messageMap = {}; // 문서 ID -> 메시지
+        final messageMap = <String, ChatMessage>{};
         final messages = snapshot.data!.docs
             .map((doc) {
               try {
                 final data = doc.data() as Map<String, dynamic>;
                 final message = ChatMessage.fromFirestore(data);
-                
-                // 같은 문서 ID로 이미 파싱했으면 스킵 (중복 방지)
+
                 if (!messageMap.containsKey(doc.id)) {
                   messageMap[doc.id] = message;
                   return message;
@@ -706,53 +428,49 @@ class _ChatScreenState extends State<ChatScreen> {
                 return null;
               }
             })
-            .where((msg) => msg != null)
-            .cast<ChatMessage>()
+            .whereType<ChatMessage>()
             .toList();
-        
-        // 클라이언트에서 timestamp 기준으로 정렬
+
         messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
 
-        // sender가 'user' 또는 'ai'인 경우만 필터링
-        List<ChatMessage> filteredMessages = [];
+        final filteredMessages = <ChatMessage>[];
         for (var message in messages) {
-          // sender가 'user' 또는 'ai'인 경우만 표시
           if (message.sender != 'user' && message.sender != 'ai') {
             print('⚠️ [ChatScreen] 알 수 없는 sender 무시: ${message.sender}');
             continue;
           }
-          
-          // 텍스트가 비어있으면 무시
+
           if (message.text.trim().isEmpty) {
             print('⚠️ [ChatScreen] 빈 텍스트 메시지 무시');
             continue;
           }
-          
+
           filteredMessages.add(message);
         }
 
-        // 전송 중인 사용자 메시지가 있고, Firestore에 아직 저장되지 않았다면 추가
-        // Firebase에서 같은 텍스트의 메시지가 이미 있으면 _pendingUserMessage는 추가하지 않음 (중복 방지)
-        List<ChatMessage> displayMessages = List.from(filteredMessages);
+        final displayMessages = List<ChatMessage>.from(filteredMessages);
         if (_pendingUserMessage != null) {
-          // Firebase 메시지 목록에 같은 텍스트의 사용자 메시지가 있는지 확인
-          final isInFirebase = filteredMessages.any((m) => 
-            m.sender == 'user' && 
-            m.text.trim() == _pendingUserMessage!.trim()
+          final isInFirebase = filteredMessages.any(
+            (m) =>
+                m.sender == 'user' &&
+                m.text.trim() == _pendingUserMessage!.trim(),
           );
-          
+
           if (!isInFirebase) {
-            // Firebase에 아직 없으면 임시 메시지로 표시
-            displayMessages.add(ChatMessage(
-              sender: 'user',
-              text: _pendingUserMessage!,
-              timestamp: DateTime.now(),
-            ));
-            print('📝 [ChatScreen] _pendingUserMessage 추가 (Firebase에 아직 없음): $_pendingUserMessage');
+            displayMessages.add(
+              ChatMessage(
+                sender: 'user',
+                text: _pendingUserMessage!,
+                timestamp: DateTime.now(),
+              ),
+            );
+            print(
+              '📝 [ChatScreen] _pendingUserMessage 추가 (Firebase에 아직 없음): $_pendingUserMessage',
+            );
           } else {
-            // Firebase에 이미 있으면 _pendingUserMessage 제거 (중복 방지)
-            // 빌드 중에는 setState()를 호출할 수 없으므로 addPostFrameCallback 사용
-            print('✅ [ChatScreen] _pendingUserMessage 제거 (Firebase에 이미 있음): $_pendingUserMessage');
+            print(
+              '✅ [ChatScreen] _pendingUserMessage 제거 (Firebase에 이미 있음): $_pendingUserMessage',
+            );
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted) {
                 setState(() {
@@ -762,41 +480,29 @@ class _ChatScreenState extends State<ChatScreen> {
             });
           }
         }
-        
-        // AI 답변이 Firestore에 저장되었는지 확인 (로딩 상태 해제)
-        // _isSending이 false이면 이미 로딩이 완료된 상태이므로 체크하지 않음
+
         if (_isSending) {
-          print('⏳ [ChatScreen] AI 답변 대기 중... (filteredMessages: ${filteredMessages.length})');
-          // 마지막 메시지가 AI 답변인지 확인 (sender가 'ai'인지만 체크)
-          bool aiResponseReceived = false;
-          if (filteredMessages.isNotEmpty) {
-            final lastMessage = filteredMessages.last;
-            print('📝 [ChatScreen] 마지막 메시지 확인 - sender: ${lastMessage.sender}, text: ${lastMessage.text.substring(0, lastMessage.text.length > 30 ? 30 : lastMessage.text.length)}...');
-            // sender가 'ai'이면 AI 답변으로 간주
-            if (lastMessage.sender == 'ai') {
-              aiResponseReceived = true;
-              print('✅ [ChatScreen] AI 답변 수신 확인 (sender: ai) - 로딩 상태 해제');
-            }
-          }
-          
-          // AI 답변을 받았으면 로딩 상태 해제
+          print(
+            '⏳ [ChatScreen] AI 답변 대기 중... (filteredMessages: ${filteredMessages.length})',
+          );
+          final lastMessage = filteredMessages.isNotEmpty
+              ? filteredMessages.last
+              : null;
+          final aiResponseReceived = lastMessage?.sender == 'ai';
+
           if (aiResponseReceived) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted) {
-                print('🔄 [ChatScreen] 로딩 상태 해제 중...');
                 setState(() {
                   _isSending = false;
                   _pendingUserMessage = null;
                 });
-                print('✅ [ChatScreen] 로딩 상태 해제 완료');
               }
             });
-            
-            // AI 응답이 완전히 저장된 후에만 추가 메시지 저장 (약간의 지연 후 확인)
+
             Future.delayed(const Duration(milliseconds: 1000), () async {
               if (!mounted) return;
-              
-              // 다시 한 번 확인: 마지막 메시지가 AI 응답이고 동영상 안내 메시지가 아닌지 확인
+
               try {
                 final messagesSnapshot = await _firestore
                     .collection(_chatRoomsCollection)
@@ -805,32 +511,32 @@ class _ChatScreenState extends State<ChatScreen> {
                     .orderBy('timestamp', descending: true)
                     .limit(2)
                     .get();
-                
+
                 if (messagesSnapshot.docs.isEmpty) {
                   print('⚠️ [ChatScreen] 메시지가 없어 동영상 안내 메시지를 저장하지 않습니다.');
                   return;
                 }
-                
-                final lastMessage = messagesSnapshot.docs[0].data();
-                const videoMessage = "지금까지 대화 나눈 내용을 바탕으로 ai 기반 문제 해결 영상을 보고 싶다면 오른쪽 위에 동영상 버튼을 눌러주세요";
-                
-                // 마지막 메시지가 AI 응답이고, 동영상 안내 메시지가 아닌 경우에만 추가
-                if (lastMessage['sender'] == 'ai' && lastMessage['text'] != videoMessage) {
-                  // 두 번째 마지막 메시지도 확인 (중복 방지)
+
+                const videoMessage =
+                    "지금까지 대화 나눈 내용을 바탕으로 ai 기반 문제 해결 영상을 보고 싶다면 오른쪽 위에 동영상 버튼을 눌러주세요";
+                final lastMessageData = messagesSnapshot.docs[0].data();
+
+                if (lastMessageData['sender'] == 'ai' &&
+                    lastMessageData['text'] != videoMessage) {
                   if (messagesSnapshot.docs.length >= 2) {
                     final secondLastMessage = messagesSnapshot.docs[1].data();
-                    // 두 번째 마지막 메시지가 동영상 안내 메시지가 아닌 경우에만 추가
                     if (secondLastMessage['text'] != videoMessage) {
                       await _saveVideoMessage();
                     } else {
                       print('ℹ️ [ChatScreen] 동영상 안내 메시지가 이미 있어 건너뜁니다.');
                     }
                   } else {
-                    // 메시지가 하나만 있는 경우 (AI 응답만 있는 경우)
                     await _saveVideoMessage();
                   }
                 } else {
-                  print('ℹ️ [ChatScreen] 마지막 메시지가 AI 응답이 아니거나 이미 동영상 안내 메시지입니다.');
+                  print(
+                    'ℹ️ [ChatScreen] 마지막 메시지가 AI 응답이 아니거나 이미 동영상 안내 메시지입니다.',
+                  );
                 }
               } catch (e) {
                 print('❌ [ChatScreen] 동영상 안내 메시지 저장 확인 중 오류: $e');
@@ -843,24 +549,25 @@ class _ChatScreenState extends State<ChatScreen> {
           print('ℹ️ [ChatScreen] _isSending이 false - 로딩 상태가 아님');
         }
 
-        // 메시지 로드 후 스크롤
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _scrollToBottom();
         });
 
-        // 로딩 상태 디버깅
         final shouldShowLoading = _isSending;
         final itemCount = displayMessages.length + (shouldShowLoading ? 1 : 0);
-        print('📊 [ChatScreen] 로딩 상태 - _isSending: $_isSending, displayMessages: ${displayMessages.length}, itemCount: $itemCount, shouldShowLoading: $shouldShowLoading');
-        
+        print(
+          '📊 [ChatScreen] 로딩 상태 - _isSending: $_isSending, displayMessages: ${displayMessages.length}, itemCount: $itemCount, shouldShowLoading: $shouldShowLoading',
+        );
+
         return ListView.builder(
           controller: _scrollController,
           padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 8),
           itemCount: itemCount,
           itemBuilder: (context, index) {
-            // 로딩 인디케이터
             if (shouldShowLoading && index == displayMessages.length) {
-              print('🔄 [ChatScreen] 로딩 인디케이터 표시 (index: $index, total: $itemCount, shouldShowLoading: $shouldShowLoading)');
+              print(
+                '🔄 [ChatScreen] 로딩 인디케이터 표시 (index: $index, total: $itemCount, shouldShowLoading: $shouldShowLoading)',
+              );
               return Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: Row(
@@ -902,7 +609,10 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                     const SizedBox(width: 9),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 12,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(10),
@@ -919,7 +629,9 @@ class _ChatScreenState extends State<ChatScreen> {
                         height: 28,
                         child: CircularProgressIndicator(
                           strokeWidth: 3,
-                          valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF6F42EE)),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Color(0xFF6F42EE),
+                          ),
                         ),
                       ),
                     ),
@@ -927,7 +639,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
               );
             }
-            
+
             final message = displayMessages[index];
             final isUser = message.sender == 'user';
 
@@ -936,7 +648,10 @@ class _ChatScreenState extends State<ChatScreen> {
                 alignment: Alignment.centerRight,
                 child: Container(
                   margin: const EdgeInsets.only(bottom: 12, left: 50),
-                  padding: const EdgeInsets.symmetric(horizontal: 33, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 33,
+                    vertical: 12,
+                  ),
                   constraints: BoxConstraints(
                     maxWidth: MediaQuery.of(context).size.width * 0.7,
                   ),
@@ -955,167 +670,210 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
                 ),
               );
-            } else {
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.25),
-                            blurRadius: 4,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: ClipOval(
-                        child: Image.asset(
-                          'assets/images/로고.png',
-                          width: 40,
-                          height: 40,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) {
-                            return Container(
-                              width: 40,
-                              height: 40,
-                              color: const Color(0xFF6F42EE),
-                              child: const Icon(
-                                Icons.smart_toy,
-                                color: Colors.white,
-                                size: 24,
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                            // 채팅 메시지 리스트 (Expanded)
-                            Expanded(
-                              child: ListView.builder(
-                                controller: _scrollController,
-                                padding: EdgeInsets.all(16 * scale),
-                                itemCount: _messages.length +
-                                    (_isLoading ? 1 : 0), // 로딩 인디케이터 포함
-                                itemBuilder: (context, index) {
-                                  if (index == _messages.length) {
-                                    // 로딩 표시
-                                    return Align(
-                                      alignment: Alignment.centerLeft,
-                                      child: Container(
-                                        margin: EdgeInsets.symmetric(
-                                            vertical: 4 * scale),
-                                        padding: EdgeInsets.all(12 * scale),
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xFFF3F1FB),
-                                          borderRadius: BorderRadius.circular(
-                                              12 * scale),
-                                        ),
-                                        child: SizedBox(
-                                          width: 20 * scale,
-                                          height: 20 * scale,
-                                          child: const CircularProgressIndicator(
-                                              strokeWidth: 2),
-                                        ),
-                                      ),
-                                    );
-                                  }
-
-                                  final message = _messages[index];
-                                  final isUser = message['sender'] == 'user';
-
-                                  return Align(
-                                    alignment: isUser
-                                        ? Alignment.centerRight
-                                        : Alignment.centerLeft,
-                                    child: Container(
-                                      margin: EdgeInsets.symmetric(
-                                          vertical: 4 * scale),
-                                      padding: EdgeInsets.symmetric(
-                                        horizontal: 16 * scale,
-                                        vertical: 10 * scale,
-                                      ),
-                                      constraints: BoxConstraints(
-                                        maxWidth: screenWidth * 0.7,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: isUser
-                                            ? const Color(0xFF7145F1)
-                                            : const Color(0xFFF3F1FB),
-                                        borderRadius: BorderRadius.only(
-                                          topLeft:
-                                              Radius.circular(18 * scale),
-                                          topRight:
-                                              Radius.circular(18 * scale),
-                                          bottomLeft: isUser
-                                              ? Radius.circular(18 * scale)
-                                              : Radius.zero,
-                                          bottomRight: isUser
-                                              ? Radius.zero
-                                              : Radius.circular(18 * scale),
-                                        ),
-                                      ),
-                                      child: Text(
-                                        message['text']!,
-                                        style: TextStyle(
-                                          fontFamily: 'Noto Sans',
-                                          fontSize: 14 * scale,
-                                          color: isUser
-                                              ? Colors.white
-                                              : Colors.black,
-                                          height: 1.4,
-                                        ),
-                                      ),
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
-                            // 하단 입력 바 (높이 고정)
-                            Container(
-                      height: 71 * scale,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          boxShadow: [
-                            BoxShadow(
-                                    color: Colors.black
-                                        .withValues(alpha: 0.25),
-                              blurRadius: 4 * scale,
-                              offset: Offset(0, -4 * scale),
-                    ),
-                    const SizedBox(width: 9),
-                    Flexible(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                        constraints: BoxConstraints(
-                          maxWidth: MediaQuery.of(context).size.width * 0.7,
-                        ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF4F2FD),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          message.text,
-                          style: const TextStyle(
-                            color: Colors.black,
-                            fontSize: 11,
-                            height: 1.5,
-                            letterSpacing: 0.011,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              );
             }
+
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.25),
+                          blurRadius: 4,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: ClipOval(
+                      child: Image.asset(
+                        'assets/images/로고.png',
+                        width: 40,
+                        height: 40,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            width: 40,
+                            height: 40,
+                            color: const Color(0xFF6F42EE),
+                            child: const Icon(
+                              Icons.smart_toy,
+                              color: Colors.white,
+                              size: 24,
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 9),
+                  Flexible(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 12,
+                      ),
+                      constraints: BoxConstraints(
+                        maxWidth: MediaQuery.of(context).size.width * 0.7,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF4F2FD),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        message.text,
+                        style: const TextStyle(
+                          color: Colors.black,
+                          fontSize: 11,
+                          height: 1.5,
+                          letterSpacing: 0.011,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
           },
         );
       },
+    );
+  }
+
+  Widget _buildInputArea() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.25),
+            blurRadius: 4,
+            offset: const Offset(0, -4),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 13, 10, 13),
+          child: InkWell(
+            onTap: () {
+              _textFieldFocusNode.requestFocus();
+              Future.delayed(const Duration(milliseconds: 100), () {
+                _textFieldFocusNode.requestFocus();
+              });
+            },
+            child: Container(
+              constraints: const BoxConstraints(minHeight: 46, maxHeight: 200),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF4F2FD),
+                borderRadius: BorderRadius.circular(23),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(
+                      left: 16.18,
+                      right: 8,
+                      bottom: 6,
+                    ),
+                    child: GestureDetector(
+                      onTap: () {
+                        // TODO: implement camera feature
+                      },
+                      child: Container(
+                        width: 35,
+                        height: 34,
+                        decoration: const BoxDecoration(
+                          color: Color(0xFF6F42EE),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.camera_alt,
+                          color: Colors.white,
+                          size: 22,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: TextField(
+                      controller: _messageController,
+                      focusNode: _textFieldFocusNode,
+                      decoration: const InputDecoration(
+                        hintText: '메시지 입력...',
+                        hintStyle: TextStyle(
+                          color: Color(0xFF9A9A9A),
+                          fontSize: 11,
+                          letterSpacing: 0.011,
+                          height: 1.5,
+                        ),
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 14,
+                        ),
+                        isDense: true,
+                      ),
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Colors.black,
+                        height: 1.5,
+                      ),
+                      minLines: 1,
+                      maxLines: 8,
+                      textInputAction: TextInputAction.newline,
+                      keyboardType: TextInputType.multiline,
+                      onTap: () {
+                        _textFieldFocusNode.requestFocus();
+                      },
+                      onChanged: (value) {
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          _scrollToBottom();
+                        });
+                      },
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(right: 16.06, bottom: 6),
+                    child: GestureDetector(
+                      onTap: _isSending
+                          ? () {
+                              print('⚠️ [Flutter] 이미 전송 중이라서 버튼 클릭 무시');
+                            }
+                          : () {
+                              print('🔵 [Flutter] 전송 버튼 클릭됨!');
+                              _sendMessage();
+                            },
+                      child: _isSending
+                          ? const SizedBox(
+                              width: 16.485,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Color(0xFF6F42EE),
+                                ),
+                              ),
+                            )
+                          : const Icon(
+                              Icons.send,
+                              color: Color(0xFF6F42EE),
+                              size: 16.485,
+                            ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -1123,17 +881,14 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      resizeToAvoidBottomInset: true, // 키보드가 올라올 때 화면 크기 조정
+      resizeToAvoidBottomInset: true,
       appBar: PreferredSize(
         preferredSize: const Size.fromHeight(57),
         child: Container(
           decoration: const BoxDecoration(
             color: Colors.white,
             border: Border(
-              bottom: BorderSide(
-                color: Color(0xFFEAEAEB),
-                width: 1,
-              ),
+              bottom: BorderSide(color: Color(0xFFEAEAEB), width: 1),
             ),
           ),
           child: SafeArea(
@@ -1141,15 +896,17 @@ class _ChatScreenState extends State<ChatScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 17),
               child: Row(
                 children: [
-                  // 뒤로가기 버튼
                   IconButton(
-                    icon: const Icon(Icons.arrow_back, color: Colors.black, size: 24),
+                    icon: const Icon(
+                      Icons.arrow_back,
+                      color: Colors.black,
+                      size: 24,
+                    ),
                     onPressed: () => Navigator.pop(context),
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
                   ),
                   const SizedBox(width: 8),
-                  // ELLI 타이틀
                   const Text(
                     'ELLI',
                     style: TextStyle(
@@ -1160,15 +917,15 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                   ),
                   const Spacer(),
-                  // 오른쪽 아이콘들 (Figma 디자인: interface-dashboard, play-list, menu)
                   Row(
                     children: [
-                      // chat_room3 아이콘 (라이브 화면으로 이동)
                       GestureDetector(
                         onTap: () {
                           Navigator.push(
                             context,
-                            MaterialPageRoute(builder: (context) => const LiveScreen()),
+                            MaterialPageRoute(
+                              builder: (context) => const LiveScreen(),
+                            ),
                           );
                         },
                         child: SvgPicture.asset(
@@ -1178,7 +935,6 @@ class _ChatScreenState extends State<ChatScreen> {
                         ),
                       ),
                       const SizedBox(width: 15),
-                      // chat_room1 아이콘 (비디오/재생)
                       GestureDetector(
                         onTap: () {
                           // 비디오 아이콘 클릭 이벤트 (필요시 구현)
@@ -1190,11 +946,10 @@ class _ChatScreenState extends State<ChatScreen> {
                         ),
                       ),
                       const SizedBox(width: 15),
-                      // chat_room2 아이콘 (메뉴)
                       GestureDetector(
                         onTap: () {
                           setState(() {
-                            _isMenuOpen = true; // 메뉴 열기
+                            _isMenuOpen = true;
                           });
                         },
                         child: SvgPicture.asset(
@@ -1215,243 +970,10 @@ class _ChatScreenState extends State<ChatScreen> {
         children: [
           Column(
             children: [
-              // 채팅 메시지 영역
-              Expanded(
-                child: _buildMessagesStream(),
-              ),
-              // 입력 영역 (Figma 디자인)
-              Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.25),
-                  blurRadius: 4,
-                  offset: const Offset(0, -4),
-                ),
-              ],
-            ),
-            child: SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(10, 13, 10, 13),
-                child: InkWell(
-                  onTap: () {
-                    // 하단바 클릭 시 TextField에 포커스를 주어 키보드가 올라오도록
-                    _textFieldFocusNode.requestFocus();
-                    // 키보드가 확실히 올라오도록 약간의 지연 후 다시 포커스
-                    Future.delayed(const Duration(milliseconds: 100), () {
-                      _textFieldFocusNode.requestFocus();
-                    });
-                  },
-                  child: Container(
-                    constraints: const BoxConstraints(
-                      minHeight: 46,
-                      maxHeight: 200, // 최대 높이 제한 (약 8-9줄)
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF4F2FD), // 연한 보라색 배경
-                      borderRadius: BorderRadius.circular(23),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.end, // 하단 정렬
-                      children: [
-                        // 카메라 아이콘
-                        Padding(
-                          padding: const EdgeInsets.only(left: 16.18, right: 8, bottom: 6),
-                          child: GestureDetector(
-                            onTap: () {
-                              // 카메라 기능 (나중에 구현)
-                            },
-                            child: Container(
-                              width: 35,
-                              height: 34,
-                              decoration: const BoxDecoration(
-                                color: Color(0xFF6F42EE), // 보라색 원형 배경
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.camera_alt,
-                                color: Colors.white,
-                                size: 22,
-                              ),
-                            ),
-                          ),
-                        ),
-                        child: Stack(
-                          children: [
-                            // 입력 필드 배경
-                            // Figma: left:10, top:686, width:340, height:46
-                            Positioned(
-                              bottom: 13 * scale,
-                              left: 10 * scale,
-                              right: 10 * scale,
-                              height: 46 * scale,
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFF4F2FD),
-                                        borderRadius: BorderRadius.circular(
-                                            23 * scale),
-                                ),
-                                child: Row(
-                                  children: [
-                                    // 카메라 아이콘 (파란 동그라미)
-                                    Padding(
-                                            padding: EdgeInsets.only(
-                                                left: 6.18 * scale),
-                                      child: Container(
-                                        width: 35.03 * scale,
-                                        height: 34 * scale,
-                                              decoration: const BoxDecoration(
-                                          shape: BoxShape.circle,
-                                                color: Color(0xFF7145F1),
-                                        ),
-                                        child: Icon(
-                                          Icons.camera_alt,
-                                          size: 22.667 * scale,
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                    ),
-                                          SizedBox(width: 9.31 * scale),
-                                    // 메시지 입력 텍스트
-                                    Expanded(
-                                      child: TextField(
-                                              controller: _textController,
-                                              onSubmitted: (_) =>
-                                                  _sendMessage(),
-                                        decoration: InputDecoration(
-                                          hintText: '메세지 입력...',
-                                          hintStyle: TextStyle(
-                                            fontFamily: 'Noto Sans',
-                                            fontSize: 11 * scale,
-                                            fontWeight: FontWeight.w400,
-                                                  color:
-                                                      const Color(0xFF9A9A9A),
-                                            letterSpacing: 0.011 * scale,
-                                            height: 1.5,
-                                          ),
-                                          border: InputBorder.none,
-                                          isDense: true,
-                                                contentPadding:
-                                                    EdgeInsets.zero,
-                                        ),
-                                        style: TextStyle(
-                                          fontFamily: 'Noto Sans',
-                                          fontSize: 11 * scale,
-                                          fontWeight: FontWeight.w400,
-                                          color: Colors.black,
-                                          letterSpacing: 0.011 * scale,
-                                          height: 1.5,
-                                        ),
-                                      ),
-                                    ),
-                                    // 전송 버튼
-                                    Padding(
-                                            padding: EdgeInsets.only(
-                                                right: 15.94 * scale),
-                                            child: GestureDetector(
-                                              onTap: _sendMessage,
-                                      child: Icon(
-                                        Icons.send,
-                                        size: 16.485 * scale,
-                                                color:
-                                                    const Color(0xFF7145F1),
-                                ),
-                        // 텍스트 입력 필드
-                        Expanded(
-                          child: TextField(
-                            controller: _messageController,
-                            focusNode: _textFieldFocusNode,
-                            readOnly: false, // 읽기 전용 아님
-                            enabled: true, // 활성화됨
-                            decoration: const InputDecoration(
-                              hintText: '메시지 입력...',
-                              hintStyle: TextStyle(
-                                color: Color(0xFF9A9A9A),
-                                fontSize: 11,
-                                letterSpacing: 0.011,
-                                height: 1.5,
-                              ),
-                              border: InputBorder.none,
-                              contentPadding: EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 14,
-                              ),
-                              isDense: true,
-                            ),
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: Colors.black,
-                              height: 1.5,
-                            ),
-                            minLines: 1, // 최소 1줄
-                            maxLines: 8, // 최대 8줄 (200px 제한과 맞춤)
-                            textInputAction: TextInputAction.newline, // 여러 줄 입력 가능
-                            keyboardType: TextInputType.multiline, // 여러 줄 입력 허용
-                            onSubmitted: (value) {
-                              // 여러 줄 입력 시에는 전송하지 않음 (Enter만 눌렀을 때)
-                              // 전송은 전송 버튼으로만 가능
-                            },
-                            onTap: () {
-                              // TextField 직접 클릭 시에도 포커스
-                              _textFieldFocusNode.requestFocus();
-                            },
-                            onChanged: (value) {
-                              // 텍스트 변경 시 스크롤하여 입력 중인 내용이 보이도록
-                              WidgetsBinding.instance.addPostFrameCallback((_) {
-                                _scrollToBottom();
-                              });
-                            },
-                          ),
-                        ),
-                                    ),
-                                  ),
-                                ],
-                      ),
-                        // 전송 버튼 (보라색 종이비행기 아이콘)
-                        Padding(
-                          padding: const EdgeInsets.only(right: 16.06, bottom: 6),
-                          child: GestureDetector(
-                            onTap: _isSending 
-                                ? () {
-                                    print('⚠️ [Flutter] 이미 전송 중이라서 버튼 클릭 무시');
-                                  }
-                                : () {
-                                    print('🔵 [Flutter] 전송 버튼 클릭됨!');
-                                    _sendMessage();
-                                  },
-                            child: _isSending
-                                ? const SizedBox(
-                                    width: 16.485,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF6F42EE)),
-                                    ),
-                                  )
-                                : const Icon(
-                                    Icons.send,
-                                    color: Color(0xFF6F42EE), // 보라색
-                                    size: 16.485,
-                                  ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-
-          ],
-        ),
-      ),
-    );
-  }
+              Expanded(child: _buildMessagesStream()),
+              _buildInputArea(),
+            ],
           ),
-        ],
-          ),
-          // 사이드 메뉴 (메뉴 아이콘 클릭 시 표시)
           if (_isMenuOpen) _buildSideMenu(context),
         ],
       ),
@@ -1474,9 +996,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 _isMenuOpen = false; // 메뉴 닫기
               });
             },
-            child: Container(
-              color: const Color.fromRGBO(0, 0, 0, 0.28),
-            ),
+            child: Container(color: const Color.fromRGBO(0, 0, 0, 0.28)),
           ),
         ),
         // 오른쪽 사이드 패널
@@ -1506,7 +1026,11 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   // 메뉴 내용 빌더
-  Widget _buildMenuContent(BuildContext context, double scale, double screenWidth) {
+  Widget _buildMenuContent(
+    BuildContext context,
+    double scale,
+    double screenWidth,
+  ) {
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1528,7 +1052,11 @@ class _ChatScreenState extends State<ChatScreen> {
               child: Row(
                 children: [
                   SizedBox(width: 8 * scale),
-                  Icon(Icons.search, size: 17 * scale, color: const Color(0xFF9A9A9A)),
+                  Icon(
+                    Icons.search,
+                    size: 17 * scale,
+                    color: const Color(0xFF9A9A9A),
+                  ),
                   SizedBox(width: 8 * scale),
                   Text(
                     '검색',
@@ -1554,8 +1082,16 @@ class _ChatScreenState extends State<ChatScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _buildMenuIcon(scale, 'assets/images/Group 1686558373.svg', '설정'),
-                _buildMenuIcon(scale, 'assets/images/Group 1686558371.svg', '고객 센터'),
+                _buildMenuIcon(
+                  scale,
+                  'assets/images/Group 1686558373.svg',
+                  '설정',
+                ),
+                _buildMenuIcon(
+                  scale,
+                  'assets/images/Group 1686558371.svg',
+                  '고객 센터',
+                ),
                 GestureDetector(
                   onTap: () {
                     setState(() {
@@ -1563,7 +1099,11 @@ class _ChatScreenState extends State<ChatScreen> {
                     });
                     _showExitChatDialog(context); // 채팅 나가기 다이얼로그 표시
                   },
-                  child: _buildMenuIcon(scale, 'assets/images/Exit.svg', '채팅 나가기'),
+                  child: _buildMenuIcon(
+                    scale,
+                    'assets/images/Exit.svg',
+                    '채팅 나가기',
+                  ),
                 ),
               ],
             ),
@@ -1587,13 +1127,48 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ),
           // 대화 목록 항목들
-          _buildConversationItem(scale, '세탁기 UE 오류 코드 해결', '12.12 금 오전 01:30', 'assets/images/Group 1686558395.svg'),
-          _buildConversationItem(scale, '세탁 중 소음 발생 확인', '12.08 월 오후 10:12', 'assets/images/Group 1686558396.svg'),
-          _buildConversationItem(scale, '니트류 세제 질문', '12.08 월 오후 10:04', 'assets/images/Group 1686558395.svg'),
-          _buildConversationItem(scale, '세탁물 양에 맞는 세제 양 질문', '12.01 월 오후 01:30', 'assets/images/Group 1686558394.svg'),
-          _buildConversationItem(scale, '세탁기 아기 옷 세탁 기능 추천', '11.28 금 오후 04:30', 'assets/images/Group 1686558396.svg'),
-          _buildConversationItem(scale, '세탁기 관리제 구매 시기 알림', '11.01 토 오후 09:15', 'assets/images/Group 1686558394.svg'),
-          _buildConversationItem(scale, '세탁기 첫 사용 방법', '11.01 토 오후 09:15', 'assets/images/Group 1686558394.svg'),
+          _buildConversationItem(
+            scale,
+            '세탁기 UE 오류 코드 해결',
+            '12.12 금 오전 01:30',
+            'assets/images/Group 1686558395.svg',
+          ),
+          _buildConversationItem(
+            scale,
+            '세탁 중 소음 발생 확인',
+            '12.08 월 오후 10:12',
+            'assets/images/Group 1686558396.svg',
+          ),
+          _buildConversationItem(
+            scale,
+            '니트류 세제 질문',
+            '12.08 월 오후 10:04',
+            'assets/images/Group 1686558395.svg',
+          ),
+          _buildConversationItem(
+            scale,
+            '세탁물 양에 맞는 세제 양 질문',
+            '12.01 월 오후 01:30',
+            'assets/images/Group 1686558394.svg',
+          ),
+          _buildConversationItem(
+            scale,
+            '세탁기 아기 옷 세탁 기능 추천',
+            '11.28 금 오후 04:30',
+            'assets/images/Group 1686558396.svg',
+          ),
+          _buildConversationItem(
+            scale,
+            '세탁기 관리제 구매 시기 알림',
+            '11.01 토 오후 09:15',
+            'assets/images/Group 1686558394.svg',
+          ),
+          _buildConversationItem(
+            scale,
+            '세탁기 첫 사용 방법',
+            '11.01 토 오후 09:15',
+            'assets/images/Group 1686558394.svg',
+          ),
         ],
       ),
     );
@@ -1603,11 +1178,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget _buildMenuIcon(double scale, String svgPath, String label) {
     return Column(
       children: [
-        SvgPicture.asset(
-          svgPath,
-          width: 59 * scale,
-          height: 59 * scale,
-        ),
+        SvgPicture.asset(svgPath, width: 59 * scale, height: 59 * scale),
         SizedBox(height: 8 * scale),
         Text(
           label,
@@ -1624,7 +1195,12 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   // 대화 목록 항목 빌더
-  Widget _buildConversationItem(double scale, String title, String timestamp, String svgPath) {
+  Widget _buildConversationItem(
+    double scale,
+    String title,
+    String timestamp,
+    String svgPath,
+  ) {
     return GestureDetector(
       onTap: () {
         setState(() {
@@ -1632,8 +1208,14 @@ class _ChatScreenState extends State<ChatScreen> {
         });
       },
       child: Container(
-        margin: EdgeInsets.symmetric(horizontal: 17 * scale, vertical: 4 * scale),
-        padding: EdgeInsets.symmetric(horizontal: 12 * scale, vertical: 10 * scale),
+        margin: EdgeInsets.symmetric(
+          horizontal: 17 * scale,
+          vertical: 4 * scale,
+        ),
+        padding: EdgeInsets.symmetric(
+          horizontal: 12 * scale,
+          vertical: 10 * scale,
+        ),
         decoration: BoxDecoration(
           color: const Color(0xFFF0EDFB),
           borderRadius: BorderRadius.only(
@@ -1644,11 +1226,7 @@ class _ChatScreenState extends State<ChatScreen> {
         child: Row(
           children: [
             // 아이콘
-            SvgPicture.asset(
-              svgPath,
-              width: 40 * scale,
-              height: 40 * scale,
-            ),
+            SvgPicture.asset(svgPath, width: 40 * scale, height: 40 * scale),
             SizedBox(width: 8 * scale),
             // 제목과 타임스탬프
             Expanded(
@@ -1754,16 +1332,20 @@ class _ChatScreenState extends State<ChatScreen> {
                     ElevatedButton(
                       onPressed: () async {
                         Navigator.pop(dialogContext); // 다이얼로그 닫기
-                        
+
                         // 백엔드에 삭제 요청 (room+1 생성 트리거)
                         // 방법 1: API 호출 시도
                         try {
-                          print('🗑️ [ChatScreen] 채팅방 삭제 요청 - roomId: $_roomId');
+                          print(
+                            '🗑️ [ChatScreen] 채팅방 삭제 요청 - roomId: $_roomId',
+                          );
                           await ApiService.deleteChatRoom(_userId, _roomId);
                           print('✅ [ChatScreen] 백엔드 삭제 요청 완료 - room+1 생성됨');
                         } catch (e) {
-                          print('⚠️ [ChatScreen] API 삭제 요청 실패, Firestore로 트리거 시도: $e');
-                          
+                          print(
+                            '⚠️ [ChatScreen] API 삭제 요청 실패, Firestore로 트리거 시도: $e',
+                          );
+
                           // 방법 2: Firestore에 삭제 플래그 설정 (백엔드가 Firestore 리스너 사용 시)
                           try {
                             await _firestore
@@ -1774,12 +1356,16 @@ class _ChatScreenState extends State<ChatScreen> {
                                   'deletedAt': FieldValue.serverTimestamp(),
                                   'userId': _userId,
                                 });
-                            print('✅ [ChatScreen] Firestore 삭제 플래그 설정 완료 - 백엔드가 room+1 생성할 것임');
+                            print(
+                              '✅ [ChatScreen] Firestore 삭제 플래그 설정 완료 - 백엔드가 room+1 생성할 것임',
+                            );
                           } catch (firestoreError) {
-                            print('❌ [ChatScreen] Firestore 업데이트 실패: $firestoreError');
+                            print(
+                              '❌ [ChatScreen] Firestore 업데이트 실패: $firestoreError',
+                            );
                           }
                         }
-                        
+
                         // 화면 뒤로 가기
                         if (Navigator.canPop(parentContext)) {
                           Navigator.pop(parentContext);
@@ -1846,5 +1432,4 @@ class _ChatScreenState extends State<ChatScreen> {
       },
     );
   }
-
 }

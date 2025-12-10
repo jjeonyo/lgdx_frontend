@@ -6,9 +6,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:camera/camera.dart';
+import 'package:image/image.dart' as img;
 import 'chat_screen.dart';
 import 'customer_service_screen.dart';
 import 'elli_home_screen.dart';
+import 'video_production_screen.dart';
 import '../services/live_camera_service.dart'; // LiveCameraService with aiWatching, lastImageAckAt, lastImageSentAt
 
 // -----------------------------------------------------------------------------
@@ -90,7 +92,7 @@ class _LiveScreenState extends State<LiveScreen> {
 
   // Figma 프레임 크기: 360x800
   static const double figmaWidth = 360;
-  
+
   @override
   void initState() {
     super.initState();
@@ -109,12 +111,14 @@ class _LiveScreenState extends State<LiveScreen> {
 
   @override
   Widget build(BuildContext context) {
-    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-      statusBarColor: Color(0xFFFAF9FD),
-      statusBarIconBrightness: Brightness.dark,
-      systemNavigationBarColor: Color(0xFFF4F2FD),
-      systemNavigationBarIconBrightness: Brightness.dark,
-    ));
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Color(0xFFFAF9FD),
+        statusBarIconBrightness: Brightness.dark,
+        systemNavigationBarColor: Color(0xFFF4F2FD),
+        systemNavigationBarIconBrightness: Brightness.dark,
+      ),
+    );
 
     final mediaQuery = MediaQuery.of(context);
     final screenWidth = mediaQuery.size.width;
@@ -139,10 +143,7 @@ class _LiveScreenState extends State<LiveScreen> {
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [
-                      Color(0xFFF3F1FB),
-                      Color(0xFF7145F1),
-                    ],
+                    colors: [Color(0xFFF3F1FB), Color(0xFF7145F1)],
                     stops: [0.42, 1.0],
                   ),
                 ),
@@ -177,16 +178,15 @@ class _LiveScreenState extends State<LiveScreen> {
                       fontFamily: 'Noto Sans',
                       fontSize: 16 * scale,
                       fontWeight: FontWeight.w500,
-                    color: Colors.black,
-                    letterSpacing: 0.016 * scale,
-                    height: 21.792 / 16,
+                      color: Colors.black,
+                      letterSpacing: 0.016 * scale,
+                      height: 21.792 / 16,
+                    ),
                   ),
-                ),
-              ],
+                ],
               ),
             ),
-            // 오른쪽 상단 아이콘들
-            // 오른쪽 상단 아이콘 버튼들 (피그마 디자인에 맞게 수정)
+            // 오른쪽 상단 아이콘 버튼들 (채팅 / 동영상 / 고객센터)
             // Figma: left-[271px], top-[68px], gap-[15px]
             Positioned(
               top: 68 * scale,
@@ -194,58 +194,45 @@ class _LiveScreenState extends State<LiveScreen> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // 채팅 아이콘 (message-text-02)
-                  // Figma: size-[24px]
                   GestureDetector(
                     onTap: () {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (context) => const ChatScreen()),
+                        MaterialPageRoute(
+                          builder: (context) => const ChatScreen(),
+                        ),
                       );
                     },
-                  ),
-                  Positioned(
-                    left: 0,
-                    top: 0,
-                    width: (97.28571319580078 / 3) * scale,
-                    height: 24 * scale,
-                    child: GestureDetector(
-                      onTap: () => Navigator.push(context,
-                          MaterialPageRoute(builder: (context) => const ChatScreen())),
-                      child: Container(color: Colors.transparent),
-                    ),
-                  ),
-                  Positioned(
-                    left: (97.28571319580078 / 3) * scale,
-                    top: 0,
-                    width: (97.28571319580078 / 3) * scale,
-                    height: 24 * scale,
-                    child: GestureDetector(
-                      onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (context) => const VideoProductionScreen())),
-                      child: Container(color: Colors.transparent),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            // 중앙 비디오 영역
                     child: SvgPicture.asset(
                       'assets/images/라이브상단아이콘.svg',
                       width: 24 * scale,
                       height: 24 * scale,
                     ),
                   ),
-                  SizedBox(width: 15 * scale), // gap-[15px]
-                  // 헤드셋 아이콘 (Group)
-                  // Figma: size-[22.286px]
+                  SizedBox(width: 15 * scale),
                   GestureDetector(
                     onTap: () {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (context) => const CustomerServiceScreen()),
+                        MaterialPageRoute(
+                          builder: (context) => const VideoProductionScreen(),
+                        ),
+                      );
+                    },
+                    child: Icon(
+                      Icons.play_circle_fill,
+                      size: 24 * scale,
+                      color: const Color(0xFF6F42EE),
+                    ),
+                  ),
+                  SizedBox(width: 15 * scale),
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const CustomerServiceScreen(),
+                        ),
                       );
                     },
                     child: SvgPicture.asset(
@@ -276,12 +263,15 @@ class _LiveScreenState extends State<LiveScreen> {
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(8 * scale),
-                  child: _cameraService.cameraController != null &&
+                  child:
+                      _cameraService.cameraController != null &&
                           _cameraService.cameraController!.value.isInitialized
                       ? SizedBox(
                           width: double.infinity,
                           height: double.infinity,
-                          child: CameraPreview(_cameraService.cameraController!),
+                          child: CameraPreview(
+                            _cameraService.cameraController!,
+                          ),
                         )
                       : Center(
                           child: Icon(
@@ -307,7 +297,11 @@ class _LiveScreenState extends State<LiveScreen> {
                     width: 95 * scale,
                     height: 143 * scale,
                     color: Colors.grey.withValues(alpha: 0.3),
-                    child: Icon(Icons.person, size: 40 * scale, color: Colors.grey),
+                    child: Icon(
+                      Icons.person,
+                      size: 40 * scale,
+                      color: Colors.grey,
+                    ),
                   );
                 },
               ),
@@ -340,7 +334,9 @@ class _LiveScreenState extends State<LiveScreen> {
                         const SnackBar(content: Text('라이브 스트리밍을 시작합니다...')),
                       );
                     }
-                    final success = await _cameraService.startStreaming(context);
+                    final success = await _cameraService.startStreaming(
+                      context,
+                    );
                     if (success) {
                       setState(() {
                         _isStreaming = true;
@@ -358,7 +354,9 @@ class _LiveScreenState extends State<LiveScreen> {
                     } else {
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('라이브 스트리밍 시작에 실패했습니다. 권한을 확인해주세요.')),
+                          const SnackBar(
+                            content: Text('라이브 스트리밍 시작에 실패했습니다. 권한을 확인해주세요.'),
+                          ),
                         );
                       }
                     }
@@ -415,8 +413,7 @@ class _LiveScreenState extends State<LiveScreen> {
                       return Container(
                         width: 66 * scale,
                         height: 44 * scale,
-                        color:
-                            const Color(0xFF29344E).withValues(alpha: 0.54),
+                        color: const Color(0xFF29344E).withValues(alpha: 0.54),
                       );
                     },
                   ),
@@ -431,10 +428,11 @@ class _LiveScreenState extends State<LiveScreen> {
               child: GestureDetector(
                 onTap: () {
                   // 카메라가 작동 중인지 확인
-                  final isCameraWorking = _cameraService.cameraController != null &&
+                  final isCameraWorking =
+                      _cameraService.cameraController != null &&
                       _cameraService.cameraController!.value.isInitialized &&
                       _isStreaming;
-                  
+
                   if (isCameraWorking) {
                     // 카메라가 작동 중이면 팝업 표시
                     _showProblemSolvedDialog(context, scale);
@@ -446,7 +444,9 @@ class _LiveScreenState extends State<LiveScreen> {
                         _cameraService.stopStreaming();
                         Navigator.pushAndRemoveUntil(
                           context,
-                          MaterialPageRoute(builder: (context) => const ElliHomeScreen()),
+                          MaterialPageRoute(
+                            builder: (context) => const ElliHomeScreen(),
+                          ),
                           (route) => false,
                         );
                       }
@@ -482,7 +482,7 @@ class _LiveScreenState extends State<LiveScreen> {
       ),
     );
   }
-  
+
   // "문제가 해결되셨나요?" 팝업 다이얼로그
   void _showProblemSolvedDialog(BuildContext context, double scale) {
     showDialog(
@@ -502,11 +502,14 @@ class _LiveScreenState extends State<LiveScreen> {
                     color: Colors.black.withValues(alpha: 0.4),
                     borderRadius: BorderRadius.circular(17.61 * scale),
                   ),
-                  child: _cameraService.cameraController != null &&
+                  child:
+                      _cameraService.cameraController != null &&
                           _cameraService.cameraController!.value.isInitialized
                       ? ClipRRect(
                           borderRadius: BorderRadius.circular(17.61 * scale),
-                          child: CameraPreview(_cameraService.cameraController!),
+                          child: CameraPreview(
+                            _cameraService.cameraController!,
+                          ),
                         )
                       : Container(),
                 ),
@@ -545,9 +548,13 @@ class _LiveScreenState extends State<LiveScreen> {
                                 height: 20.898 * scale,
                                 fit: BoxFit.contain,
                                 errorBuilder: (context, error, stackTrace) {
-                                  print("❌ [LiveScreen] X 버튼 이미지 로드 실패: $error");
+                                  print(
+                                    "❌ [LiveScreen] X 버튼 이미지 로드 실패: $error",
+                                  );
                                   print("❌ [LiveScreen] 스택 트레이스: $stackTrace");
-                                  print("❌ [LiveScreen] 경로: assets/images/문제가해결되셨나요x버튼.png");
+                                  print(
+                                    "❌ [LiveScreen] 경로: assets/images/문제가해결되셨나요x버튼.png",
+                                  );
                                   return Container(
                                     width: 20.898 * scale,
                                     height: 20.898 * scale,
@@ -600,12 +607,18 @@ class _LiveScreenState extends State<LiveScreen> {
                                 errorBuilder: (context, error, stackTrace) {
                                   print("❌ [LiveScreen] 펭귄 이미지 로드 실패: $error");
                                   print("❌ [LiveScreen] 스택 트레이스: $stackTrace");
-                                  print("❌ [LiveScreen] 경로: assets/images/문제가_해결되셨나요펭귄.png");
+                                  print(
+                                    "❌ [LiveScreen] 경로: assets/images/문제가_해결되셨나요펭귄.png",
+                                  );
                                   return Container(
                                     width: 76.603 * scale,
                                     height: 114.976 * scale,
                                     color: Colors.grey.withValues(alpha: 0.3),
-                                    child: Icon(Icons.pets, size: 40 * scale, color: Colors.grey),
+                                    child: Icon(
+                                      Icons.pets,
+                                      size: 40 * scale,
+                                      color: Colors.grey,
+                                    ),
                                   );
                                 },
                               );
@@ -615,7 +628,11 @@ class _LiveScreenState extends State<LiveScreen> {
                                 width: 76.603 * scale,
                                 height: 114.976 * scale,
                                 color: Colors.grey.withValues(alpha: 0.3),
-                                child: Icon(Icons.pets, size: 40 * scale, color: Colors.grey),
+                                child: Icon(
+                                  Icons.pets,
+                                  size: 40 * scale,
+                                  color: Colors.grey,
+                                ),
                               );
                             }
                           },
@@ -642,7 +659,9 @@ class _LiveScreenState extends State<LiveScreen> {
                               const TextSpan(text: '문제가 '),
                               TextSpan(
                                 text: '해결',
-                                style: TextStyle(color: const Color(0xFF6F42EE)),
+                                style: TextStyle(
+                                  color: const Color(0xFF6F42EE),
+                                ),
                               ),
                               const TextSpan(text: '되셨나요?'),
                             ],
@@ -687,16 +706,22 @@ class _LiveScreenState extends State<LiveScreen> {
                                 onTap: () {
                                   Navigator.of(dialogContext).pop();
                                   _cameraService.closeDiagnosisAndExit();
-                                  Future.delayed(const Duration(milliseconds: 300), () {
-                                    if (mounted) {
-                                      _cameraService.stopStreaming();
-                                      Navigator.pushAndRemoveUntil(
-                                        context,
-                                        MaterialPageRoute(builder: (context) => const ChatScreen()),
-                                        (route) => false,
-                                      );
-                                    }
-                                  });
+                                  Future.delayed(
+                                    const Duration(milliseconds: 300),
+                                    () {
+                                      if (mounted) {
+                                        _cameraService.stopStreaming();
+                                        Navigator.pushAndRemoveUntil(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (context) =>
+                                                const ChatScreen(),
+                                          ),
+                                          (route) => false,
+                                        );
+                                      }
+                                    },
+                                  );
                                 },
                                 child: Image.asset(
                                   'assets/images/문제가해결되셨나요채팅하기버튼.png',
@@ -709,12 +734,19 @@ class _LiveScreenState extends State<LiveScreen> {
                                       height: 87 * scale,
                                       decoration: BoxDecoration(
                                         color: const Color(0xFF6F42EE),
-                                        borderRadius: BorderRadius.circular(40 * scale),
+                                        borderRadius: BorderRadius.circular(
+                                          40 * scale,
+                                        ),
                                         boxShadow: [
                                           BoxShadow(
-                                            color: Colors.black.withValues(alpha: 0.13),
+                                            color: Colors.black.withValues(
+                                              alpha: 0.13,
+                                            ),
                                             blurRadius: 19.157 * scale,
-                                            offset: Offset(2.612 * scale, 2.612 * scale),
+                                            offset: Offset(
+                                              2.612 * scale,
+                                              2.612 * scale,
+                                            ),
                                           ),
                                         ],
                                       ),
@@ -734,7 +766,9 @@ class _LiveScreenState extends State<LiveScreen> {
                                 ),
                               ),
                             ),
-                            SizedBox(width: 5.2 * scale), // gap-[13.061px] reduced by 2.5x
+                            SizedBox(
+                              width: 5.2 * scale,
+                            ), // gap-[13.061px] reduced by 2.5x
                             // 종료하기 버튼
                             Flexible(
                               flex: 1,
@@ -742,16 +776,22 @@ class _LiveScreenState extends State<LiveScreen> {
                                 onTap: () {
                                   Navigator.of(dialogContext).pop();
                                   _cameraService.closeDiagnosisAndExit();
-                                  Future.delayed(const Duration(milliseconds: 300), () {
-                                    if (mounted) {
-                                      _cameraService.stopStreaming();
-                                      Navigator.pushAndRemoveUntil(
-                                        context,
-                                        MaterialPageRoute(builder: (context) => const ElliHomeScreen()),
-                                        (route) => false,
-                                      );
-                                    }
-                                  });
+                                  Future.delayed(
+                                    const Duration(milliseconds: 300),
+                                    () {
+                                      if (mounted) {
+                                        _cameraService.stopStreaming();
+                                        Navigator.pushAndRemoveUntil(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (context) =>
+                                                const ElliHomeScreen(),
+                                          ),
+                                          (route) => false,
+                                        );
+                                      }
+                                    },
+                                  );
                                 },
                                 child: Image.asset(
                                   'assets/images/문제해결되셨나요종료하기버튼.png',
@@ -764,12 +804,19 @@ class _LiveScreenState extends State<LiveScreen> {
                                       height: 87 * scale,
                                       decoration: BoxDecoration(
                                         color: const Color(0xFFF2F0FF),
-                                        borderRadius: BorderRadius.circular(40 * scale),
+                                        borderRadius: BorderRadius.circular(
+                                          40 * scale,
+                                        ),
                                         boxShadow: [
                                           BoxShadow(
-                                            color: Colors.black.withValues(alpha: 0.13),
+                                            color: Colors.black.withValues(
+                                              alpha: 0.13,
+                                            ),
                                             blurRadius: 19.157 * scale,
-                                            offset: Offset(2.612 * scale, 2.612 * scale),
+                                            offset: Offset(
+                                              2.612 * scale,
+                                              2.612 * scale,
+                                            ),
                                           ),
                                         ],
                                       ),
@@ -802,7 +849,7 @@ class _LiveScreenState extends State<LiveScreen> {
       },
     );
   }
-  
+
   @override
   void dispose() {
     _cameraService.stopStreaming();

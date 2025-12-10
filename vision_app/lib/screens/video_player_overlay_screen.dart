@@ -12,7 +12,8 @@ class VideoPlayerOverlayScreen extends StatefulWidget {
   const VideoPlayerOverlayScreen({super.key, this.videoUrl});
 
   @override
-  State<VideoPlayerOverlayScreen> createState() => _VideoPlayerOverlayScreenState();
+  State<VideoPlayerOverlayScreen> createState() =>
+      _VideoPlayerOverlayScreenState();
 }
 
 class _VideoPlayerOverlayScreenState extends State<VideoPlayerOverlayScreen> {
@@ -24,16 +25,19 @@ class _VideoPlayerOverlayScreenState extends State<VideoPlayerOverlayScreen> {
   @override
   void initState() {
     super.initState();
-    
+
     // 비디오 썸네일(첫 프레임)을 배경으로 보여주기 위해 컨트롤러 초기화
     if (widget.videoUrl != null) {
       if (widget.videoUrl!.startsWith('http')) {
-        _controller = VideoPlayerController.networkUrl(Uri.parse(widget.videoUrl!));
+        _controller = VideoPlayerController.networkUrl(
+          Uri.parse(widget.videoUrl!),
+        );
       } else {
         _controller = VideoPlayerController.asset(widget.videoUrl!);
       }
 
       _controller!.initialize().then((_) {
+        if (!mounted) return;
         setState(() {
           _isInitialized = true;
         });
@@ -66,17 +70,19 @@ class _VideoPlayerOverlayScreenState extends State<VideoPlayerOverlayScreen> {
   @override
   Widget build(BuildContext context) {
     // 상태바 스타일 설정 (Figma: #faf9fd 배경)
-    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-      statusBarColor: Color(0xFFFAF9FD),
-      statusBarIconBrightness: Brightness.dark,
-      systemNavigationBarColor: Color(0xFFBAA6F7),
-      systemNavigationBarIconBrightness: Brightness.dark,
-    ));
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Color(0xFFFAF9FD),
+        statusBarIconBrightness: Brightness.dark,
+        systemNavigationBarColor: Color(0xFFBAA6F7),
+        systemNavigationBarIconBrightness: Brightness.dark,
+      ),
+    );
 
     final mediaQuery = MediaQuery.of(context);
     final screenWidth = mediaQuery.size.width;
     final screenHeight = mediaQuery.size.height;
-    
+
     // 화면에 딱 맞게 스케일 계산 (Figma 360x800 기준)
     final scale = screenWidth / figmaWidth;
 
@@ -113,16 +119,18 @@ class _VideoPlayerOverlayScreenState extends State<VideoPlayerOverlayScreen> {
               left: 0,
               right: 0,
               height: 24 * scale,
-              child: Container(
-                color: const Color(0xFFFAF9FD),
-              ),
+              child: Container(color: const Color(0xFFFAF9FD)),
             ),
             // 3. 뒤로가기 버튼
             Positioned(
               top: 40 * scale,
               left: 12 * scale,
               child: IconButton(
-                icon: Icon(Icons.arrow_back, size: 24 * scale, color: Colors.black),
+                icon: Icon(
+                  Icons.arrow_back,
+                  size: 24 * scale,
+                  color: Colors.black,
+                ),
                 onPressed: () {
                   Navigator.pop(context);
                 },
@@ -163,11 +171,9 @@ class _VideoPlayerOverlayScreenState extends State<VideoPlayerOverlayScreen> {
                             ),
                           ),
                         ),
-                      
+
                       // 검은 오버레이 레이어 (썸네일 위에 덮임)
-                      Container(
-                        color: Colors.black.withValues(alpha: 0.4),
-                      ),
+                      Container(color: Colors.black.withOpacity(0.4)),
 
                       // 다시 재생 버튼 (중앙)
                       Center(
@@ -178,7 +184,9 @@ class _VideoPlayerOverlayScreenState extends State<VideoPlayerOverlayScreen> {
                               Navigator.pushReplacement(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (context) => VideoPlayerScreen(videoUrl: widget.videoUrl),
+                                  builder: (context) => VideoPlayerScreen(
+                                    videoUrl: widget.videoUrl,
+                                  ),
                                 ),
                               );
                             } else {
@@ -190,7 +198,7 @@ class _VideoPlayerOverlayScreenState extends State<VideoPlayerOverlayScreen> {
                             height: 51 * scale,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              color: Colors.white.withValues(alpha: 0.9),
+                              color: Colors.white.withOpacity(0.9),
                             ),
                             child: Icon(
                               Icons.replay,
@@ -216,7 +224,7 @@ class _VideoPlayerOverlayScreenState extends State<VideoPlayerOverlayScreen> {
                     });
                   },
                   child: Container(
-                    color: Colors.black.withValues(alpha: 0.5),
+                    color: Colors.black.withOpacity(0.5),
                     child: Stack(
                       children: [
                         // 팝업 다이얼로그
@@ -232,10 +240,12 @@ class _VideoPlayerOverlayScreenState extends State<VideoPlayerOverlayScreen> {
                               height: 357.277 * scale,
                               decoration: BoxDecoration(
                                 color: Colors.white,
-                                borderRadius: BorderRadius.circular(20.223 * scale),
+                                borderRadius: BorderRadius.circular(
+                                  20.223 * scale,
+                                ),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: Colors.black.withValues(alpha: 0.25),
+                                    color: Colors.black.withOpacity(0.25),
                                     blurRadius: 4 * scale,
                                     offset: Offset(0, 4 * scale),
                                   ),
@@ -277,13 +287,16 @@ class _VideoPlayerOverlayScreenState extends State<VideoPlayerOverlayScreen> {
                                       width: 88 * scale,
                                       height: 132 * scale,
                                       fit: BoxFit.cover,
-                                      errorBuilder: (context, error, stackTrace) {
-                                        return Container(
-                                          width: 88 * scale,
-                                          height: 132 * scale,
-                                          color: Colors.grey.withValues(alpha: 0.3),
-                                        );
-                                      },
+                                      errorBuilder:
+                                          (context, error, stackTrace) {
+                                            return Container(
+                                              width: 88 * scale,
+                                              height: 132 * scale,
+                                              color: Colors.grey.withOpacity(
+                                                0.3,
+                                              ),
+                                            );
+                                          },
                                     ),
                                   ),
                                   // "문제가 해결되셨나요?" 텍스트
@@ -345,7 +358,10 @@ class _VideoPlayerOverlayScreenState extends State<VideoPlayerOverlayScreen> {
                                           onTap: () {
                                             Navigator.push(
                                               context,
-                                              MaterialPageRoute(builder: (context) => const ChatScreen()),
+                                              MaterialPageRoute(
+                                                builder: (context) =>
+                                                    const ChatScreen(),
+                                              ),
                                             );
                                           },
                                           child: Container(
@@ -353,12 +369,19 @@ class _VideoPlayerOverlayScreenState extends State<VideoPlayerOverlayScreen> {
                                             height: 40 * scale,
                                             decoration: BoxDecoration(
                                               color: const Color(0xFF6F42EE),
-                                              borderRadius: BorderRadius.circular(40 * scale),
+                                              borderRadius:
+                                                  BorderRadius.circular(
+                                                    40 * scale,
+                                                  ),
                                               boxShadow: [
                                                 BoxShadow(
-                                                  color: Colors.black.withValues(alpha: 0.13),
+                                                  color: Colors.black
+                                                      .withOpacity(0.13),
                                                   blurRadius: 22 * scale,
-                                                  offset: Offset(3 * scale, 3 * scale),
+                                                  offset: Offset(
+                                                    3 * scale,
+                                                    3 * scale,
+                                                  ),
                                                 ),
                                               ],
                                             ),
@@ -382,7 +405,10 @@ class _VideoPlayerOverlayScreenState extends State<VideoPlayerOverlayScreen> {
                                           onTap: () {
                                             Navigator.push(
                                               context,
-                                              MaterialPageRoute(builder: (context) => const AchievementScreen()),
+                                              MaterialPageRoute(
+                                                builder: (context) =>
+                                                    const AchievementScreen(),
+                                              ),
                                             );
                                           },
                                           child: Container(
@@ -390,12 +416,19 @@ class _VideoPlayerOverlayScreenState extends State<VideoPlayerOverlayScreen> {
                                             height: 40 * scale,
                                             decoration: BoxDecoration(
                                               color: const Color(0xFFF2F0FF),
-                                              borderRadius: BorderRadius.circular(40 * scale),
+                                              borderRadius:
+                                                  BorderRadius.circular(
+                                                    40 * scale,
+                                                  ),
                                               boxShadow: [
                                                 BoxShadow(
-                                                  color: Colors.black.withValues(alpha: 0.13),
+                                                  color: Colors.black
+                                                      .withOpacity(0.13),
                                                   blurRadius: 22 * scale,
-                                                  offset: Offset(3 * scale, 3 * scale),
+                                                  offset: Offset(
+                                                    3 * scale,
+                                                    3 * scale,
+                                                  ),
                                                 ),
                                               ],
                                             ),
@@ -406,7 +439,9 @@ class _VideoPlayerOverlayScreenState extends State<VideoPlayerOverlayScreen> {
                                                   fontFamily: 'Noto Sans',
                                                   fontSize: 16 * scale,
                                                   fontWeight: FontWeight.w400,
-                                                  color: const Color(0xFF6F42EE),
+                                                  color: const Color(
+                                                    0xFF6F42EE,
+                                                  ),
                                                   letterSpacing: -0.8 * scale,
                                                 ),
                                               ),
