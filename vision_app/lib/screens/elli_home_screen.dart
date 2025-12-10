@@ -152,7 +152,7 @@ class _ElliHomeScreenState extends State<ElliHomeScreen> {
               right: 0,
               child: Center(
                 child: Text(
-                  '엘지님. 좋은 아침이에요.',
+                  '지현님. 좋은 아침이에요.',
                   style: TextStyle(
                     fontFamily: 'Noto Sans',
                     fontSize: 16 * scale,

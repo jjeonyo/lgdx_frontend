@@ -1,6 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -8,7 +6,7 @@ import 'package:camera/camera.dart';
 import 'chat_screen.dart';
 import 'customer_service_screen.dart';
 import 'elli_home_screen.dart';
-import '../services/live_camera_service.dart';
+import '../services/live_camera_service.dart'; // LiveCameraService with aiWatching, lastImageAckAt, lastImageSentAt
 
 class LiveScreen extends StatefulWidget {
   const LiveScreen({super.key});
@@ -23,7 +21,6 @@ class _LiveScreenState extends State<LiveScreen> {
 
   // Figma 프레임 크기: 360x800
   static const double figmaWidth = 360;
-  static const double figmaHeight = 800;
   
   @override
   void initState() {
@@ -114,12 +111,12 @@ class _LiveScreenState extends State<LiveScreen> {
                       fontFamily: 'Noto Sans',
                       fontSize: 16 * scale,
                       fontWeight: FontWeight.w500,
-                      color: Colors.black,
-                      letterSpacing: 0.016 * scale,
-                      height: 21.792 / 16,
-                    ),
+                    color: Colors.black,
+                    letterSpacing: 0.016 * scale,
+                    height: 21.792 / 16,
                   ),
-                ],
+                ),
+              ],
               ),
             ),
             // 오른쪽 상단 아이콘 버튼들 (피그마 디자인에 맞게 수정)
