@@ -8,7 +8,7 @@ class ApiService {
   // 실제 Android 기기 사용 시 아래 USE_REAL_DEVICE를 true로 변경하세요
   // 🔥 핫스팟 연결 시: PC IP 주소를 ipconfig로 확인 후 아래 IP를 변경하세요!
   static const bool USE_REAL_DEVICE = true; // 실제 기기 사용 시 true, 에뮬레이터 사용 시 false
-  static const String REAL_DEVICE_IP = "192.168.0.27"; // PC IP 주소 (ipconfig로 확인)
+  static const String REAL_DEVICE_IP = "192.168.0.47"; // PC IP 주소 (ipconfig로 확인)
   // 💡 핫스팟별 IP 대역:
   //    - iPhone 핫스팟: 172.20.10.x
   //    - Android 핫스팟: 192.168.43.x 또는 192.168.137.x
@@ -18,26 +18,26 @@ class ApiService {
     if (Platform.isAndroid) {
       if (USE_REAL_DEVICE) {
         // 실제 Android 기기 사용 시
-        return "http://$REAL_DEVICE_IP:9090/api/chatbot/ask";
+        return "http://$REAL_DEVICE_IP:8000/api/chatbot/ask";
       } else {
         // Android 에뮬레이터 사용 시
-        return "http://10.0.2.2:9090/api/chatbot/ask";
+        return "http://10.0.2.2:8000/api/chatbot/ask";
       }
     }
     // iOS 시뮬레이터나 다른 플랫폼
-    return "http://localhost:9090/api/chatbot/ask";
+    return "http://localhost:8000/api/chatbot/ask";
   }
 
   // 서버 base URL (ask 엔드포인트 제외)
   static String get serverBaseUrl {
     if (Platform.isAndroid) {
       if (USE_REAL_DEVICE) {
-        return "http://$REAL_DEVICE_IP:9090";
+        return "http://$REAL_DEVICE_IP:8000";
       } else {
-        return "http://10.0.2.2:9090";
+        return "http://10.0.2.2:8000";
       }
     }
-    return "http://localhost:9090";
+    return "http://localhost:8000";
   }
 
   // AI 답변 응답 모델

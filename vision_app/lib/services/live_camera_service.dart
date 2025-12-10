@@ -16,8 +16,8 @@ class LiveCameraService {
   //    - iPhone 핫스팟: 172.20.10.x
   //    - Android 핫스팟: 192.168.43.x 또는 192.168.137.x
   //    - 일반 Wi-Fi: 192.168.0.x 또는 192.168.1.x
-  static const String REAL_DEVICE_IP = "192.168.0.27"; // PC IP 주소 (ipconfig로 확인)
-  static const String WS_URL = "ws://$REAL_DEVICE_IP:8001/ws/chat"; // test.py는 포트 8001 사용
+  static const String REAL_DEVICE_IP = "192.168.0.47"; // PC IP 주소 (ipconfig로 확인)
+  static const String WS_URL = "ws://$REAL_DEVICE_IP:8000/ws/chat"; // test.py는 포트 8001 사용
   
   CameraController? _cameraController;
   WebSocketChannel? _channel;
