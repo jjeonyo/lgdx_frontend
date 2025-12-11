@@ -99,7 +99,8 @@ class _LiveScreenState extends State<LiveScreen> {
     // 엘리홈으로 이동 콜백 설정
     _cameraService.setOnExitRequested(() {
       if (mounted) {
-        _cameraService.stopStreaming();
+        // 사용종료 시 WebSocket을 유지하기 위해 closeWebSocket=false
+        _cameraService.stopStreaming(closeWebSocket: false);
         Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(builder: (context) => const ElliHomeScreen()),
@@ -186,7 +187,7 @@ class _LiveScreenState extends State<LiveScreen> {
                 ],
               ),
             ),
-            // 오른쪽 상단 아이콘 버튼들 (채팅 / 동영상 / 고객센터)
+            // 오른쪽 상단 아이콘 버튼들 (채팅 / 고객센터)
             // Figma: left-[271px], top-[68px], gap-[15px]
             Positioned(
               top: 68 * scale,
@@ -207,22 +208,6 @@ class _LiveScreenState extends State<LiveScreen> {
                       'assets/images/라이브상단아이콘.svg',
                       width: 24 * scale,
                       height: 24 * scale,
-                    ),
-                  ),
-                  SizedBox(width: 15 * scale),
-                  GestureDetector(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const VideoProductionScreen(),
-                        ),
-                      );
-                    },
-                    child: Icon(
-                      Icons.play_circle_fill,
-                      size: 24 * scale,
-                      color: const Color(0xFF6F42EE),
                     ),
                   ),
                   SizedBox(width: 15 * scale),
@@ -710,7 +695,9 @@ class _LiveScreenState extends State<LiveScreen> {
                                     const Duration(milliseconds: 300),
                                     () {
                                       if (mounted) {
-                                        _cameraService.stopStreaming();
+                                        _cameraService.stopStreaming(
+                                          closeWebSocket: false,
+                                        );
                                         Navigator.pushAndRemoveUntil(
                                           context,
                                           MaterialPageRoute(
@@ -780,7 +767,9 @@ class _LiveScreenState extends State<LiveScreen> {
                                     const Duration(milliseconds: 300),
                                     () {
                                       if (mounted) {
-                                        _cameraService.stopStreaming();
+                                        _cameraService.stopStreaming(
+                                          closeWebSocket: false,
+                                        );
                                         Navigator.pushAndRemoveUntil(
                                           context,
                                           MaterialPageRoute(

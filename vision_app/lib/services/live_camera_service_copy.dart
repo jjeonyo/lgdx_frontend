@@ -16,7 +16,7 @@ class LiveCameraService {
   //    - iPhone 핫스팟: 172.20.10.x
   //    - Android 핫스팟: 192.168.43.x 또는 192.168.137.x
   //    - 일반 Wi-Fi: 192.168.0.x 또는 192.168.1.x
-  static const String REAL_DEVICE_IP = "172.30.1.95"; // PC IP 주소 (ipconfig로 확인)
+  static const String REAL_DEVICE_IP = "172.20.10.4"; // PC IP 주소 (ipconfig로 확인)
   static const String WS_URL = "ws://$REAL_DEVICE_IP:8001/ws/chat"; // test.py는 포트 8001 사용
   
   CameraController? _cameraController;
@@ -901,7 +901,7 @@ class LiveCameraService {
   
   
   // 스트리밍 중지
-  Future<void> stopStreaming() async {
+  Future<void> stopStreaming({bool closeWebSocket = true}) async {
     _isStreaming = false;
     
     _videoTimer?.cancel();
@@ -917,11 +917,13 @@ class LiveCameraService {
     await _audioRecorder?.dispose();
     _audioRecorder = null;
     
-    await _websocketSubscription?.cancel();
-    _websocketSubscription = null;
-    
-    await _channel?.sink.close();
-    _channel = null;
+    if (closeWebSocket) {
+      await _websocketSubscription?.cancel();
+      _websocketSubscription = null;
+
+      await _channel?.sink.close();
+      _channel = null;
+    }
     
     await _cameraController?.dispose();
     _cameraController = null;

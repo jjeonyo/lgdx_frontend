@@ -8,7 +8,7 @@ class ApiService {
   // 실제 Android 기기 사용 시 아래 USE_REAL_DEVICE를 true로 변경하세요
   // 🔥 핫스팟 연결 시: PC IP 주소를 ipconfig로 확인 후 아래 IP를 변경하세요!
   static const bool USE_REAL_DEVICE = true; // 실제 기기 사용 시 true, 에뮬레이터 사용 시 false
-  static const String REAL_DEVICE_IP = "172.30.1.95"; // PC IP 주소 (ipconfig로 확인)
+  static const String REAL_DEVICE_IP = "172.20.10.4"; // PC IP 주소 (ipconfig로 확인)
   // 💡 핫스팟별 IP 대역:
   //    - iPhone 핫스팟: 172.20.10.x
   //    - Android 핫스팟: 192.168.43.x 또는 192.168.137.x

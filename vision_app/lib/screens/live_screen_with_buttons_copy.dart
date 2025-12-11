@@ -23,7 +23,8 @@ class _LiveScreenWithButtonsState extends State<LiveScreenWithButtons> {
     // 엘리홈으로 이동 콜백 설정
     _cameraService.setOnExitRequested(() {
       if (mounted) {
-        _cameraService.stopStreaming();
+        // 사용종료 시 WebSocket을 유지하기 위해 closeWebSocket=false
+        _cameraService.stopStreaming(closeWebSocket: false);
         Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(builder: (context) => const ElliHomeScreen()),

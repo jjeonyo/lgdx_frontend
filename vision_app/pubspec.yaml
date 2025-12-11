@@ -58,6 +58,10 @@ dependencies:
   flutter_webrtc: ^1.2.1
   video_player: ^2.9.2
 
+dependency_overrides:
+  sound_stream:
+    path: packages/sound_stream
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

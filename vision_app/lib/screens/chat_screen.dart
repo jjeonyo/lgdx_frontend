@@ -1,10 +1,15 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'live_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:http/http.dart' as http;
+
+import '../config/api_config.dart';
 import '../models/chat_message.dart';
 import '../services/api_service.dart';
+import 'live_screen.dart';
+import 'video_production_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -166,6 +171,21 @@ class _ChatScreenState extends State<ChatScreen> {
       print('✅ [ChatScreen] 동영상 안내 메시지 저장 완료');
     } catch (e) {
       print('❌ [ChatScreen] 동영상 안내 메시지 저장 실패: $e');
+    }
+  }
+
+  // 백엔드에 영상 생성 트리거 (네비게이션과 분리해 UI 블로킹 방지)
+  Future<void> _triggerGenerateVideo() async {
+    try {
+      final url = Uri.parse('${ApiConfig.baseUrl}/generate-video');
+      final response = await http
+          .post(url)
+          .timeout(const Duration(seconds: 5));
+      print('Generation trigger response: ${response.statusCode}');
+    } on TimeoutException {
+      print('Generation trigger timeout');
+    } catch (e) {
+      print('Generation trigger error: $e');
     }
   }
 
@@ -936,8 +956,18 @@ class _ChatScreenState extends State<ChatScreen> {
                       ),
                       const SizedBox(width: 15),
                       GestureDetector(
-                        onTap: () {
-                          // 비디오 아이콘 클릭 이벤트 (필요시 구현)
+                    onTap: () async {
+                          // 백엔드 트리거는 비동기로 보내고 즉시 화면 전환
+                          _triggerGenerateVideo();
+                          if (mounted) {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) =>
+                                    const VideoProductionScreen(),
+                              ),
+                            );
+                          }
                         },
                         child: SvgPicture.asset(
                           'assets/images/chat_room1.svg',

@@ -22,6 +22,7 @@ class _VideoProductionScreenState extends State<VideoProductionScreen> {
   // 로딩 화면 최소 유지 시간을 위한 변수
   late DateTime _startTime;
   static const Duration _minLoadingTime = Duration(seconds: 4);
+  String? _lastAcceptedVideoName;
 
   @override
   void initState() {
@@ -86,55 +87,113 @@ class _VideoProductionScreenState extends State<VideoProductionScreen> {
   Future<void> _checkVideoStatus() async {
     try {
       final response = await http.get(Uri.parse(_checkStatusUrl));
+      print("📡 [Polling] Status Check: ${response.statusCode}");
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
+        print("📡 [Polling] Response Body: $data");
         final status = data['status']; // 'processing', 'completed', 'failed'
+        final rawUrl = data['video_url'];
+        final createdAtStr = data['video_created_at'];
 
-        if (status == 'completed') {
-          String videoUrl = data['video_url']; // 생성된 비디오 URL
+        if (status == 'completed' && rawUrl != null && rawUrl.toString().isNotEmpty) {
+          print("✅ [Polling] Video generation completed!");
+          String videoUrl = rawUrl.toString();
+          print("✅ [Polling] Raw Video URL: $videoUrl");
+
+          final fileName = _extractFileName(videoUrl);
+          if (fileName == null) {
+            print("⚠️ [Polling] 파일명을 파싱하지 못했습니다. 계속 대기.");
+            return;
+          }
+
+          // 같은 파일이면 재생하지 않고 대기
+          if (_lastAcceptedVideoName == fileName) {
+            print("⏳ [Polling] 동일 파일 감지 ($fileName), 새 파일을 대기합니다.");
+            return;
+          }
+
+          // 생성 시작 이후 파일인지 확인 (예전 파일이면 스킵)
+          if (!_isFreshVideo(fileName)) {
+            print("⏳ [Polling] 이전 생성 파일($fileName)로 판단되어 대기합니다.");
+            return;
+          }
+
+          if (createdAtStr != null) {
+            final createdAt = DateTime.tryParse(createdAtStr);
+            if (createdAt != null && createdAt.isBefore(_startTime)) {
+              print("⏳ [Polling] 생성 시각이 현재 세션 이전입니다. 대기합니다. ($createdAtStr)");
+              return;
+            }
+          }
 
           // 상대 경로인 경우 base URL 추가
           if (!videoUrl.startsWith('http')) {
-            // URL이 /로 시작하지 않으면 추가
             if (!videoUrl.startsWith('/')) {
               videoUrl = '/$videoUrl';
             }
             videoUrl = '${ApiConfig.baseUrl}$videoUrl';
           }
+          print("✅ [Polling] Final Video URL: $videoUrl");
 
+          // 실제로 접근 가능한지 HEAD로 확인
+          final reachable = await _isReachable(videoUrl);
+          if (!reachable) {
+            print("⏳ [Polling] 파일이 아직 서빙되지 않았습니다. 재시도.");
+            return;
+          }
+
+          _lastAcceptedVideoName = fileName;
           await _navigateWithDelay(VideoPlayerScreen(videoUrl: videoUrl));
         } else if (status == 'failed') {
           _handleFailure();
         }
       } else {
-        // 상태 코드가 200이 아닌 경우
         print("Status check failed: ${response.statusCode}");
-
-        // 서버에서 명시적인 에러 메시지가 오는 경우 실패 처리
-        // 예: Quota Exceeded, Rate Limit, 429 등
         if (response.statusCode == 429 ||
             response.body.contains('RESOURCE_EXHAUSTED') ||
             response.body.contains('quota')) {
           print("Critical error detected: ${response.body}");
           _handleFailure();
-        } else {
-          // 500 Internal Server Error 등 기타 서버 오류 발생 시에도 실패 처리하지 않고 로그만 출력
-          // (긴 작업 중 일시적 타임아웃 등은 무시하고 계속 폴링)
-          print("Server status code: ${response.statusCode}");
-
-          // 하지만 명시적인 Quota 에러는 실패 처리
-          if (response.statusCode == 429 ||
-              response.body.contains('RESOURCE_EXHAUSTED') ||
-              response.body.contains('quota')) {
-            print("Critical error detected: ${response.body}");
-            _handleFailure();
-          }
         }
       }
     } catch (e) {
-      // 네트워크 오류 등 - 로그만 출력하고 계속 재시도
       print("Error checking status: $e");
+    }
+  }
+
+  String? _extractFileName(String url) {
+    try {
+      final uri = Uri.parse(url);
+      final path = uri.path;
+      if (path.isEmpty) return null;
+      final segments = path.split('/');
+      return segments.isNotEmpty ? segments.last : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  bool _isFreshVideo(String fileName) {
+    // 파일명에서 숫자(타임스탬프) 추출 후, 세션 시작 시각 이후면 신선한 파일로 간주
+    final match = RegExp(r'(\d{10,})').firstMatch(fileName);
+    if (match != null) {
+      final ts = int.tryParse(match.group(1)!);
+      if (ts != null) {
+        final tsMillis = ts.toString().length == 13 ? ts : ts * 1000;
+        return tsMillis >= _startTime.millisecondsSinceEpoch;
+      }
+    }
+    // 타임스탬프를 찾지 못하면 우선 재생하도록 true 반환
+    return true;
+  }
+
+  Future<bool> _isReachable(String url) async {
+    try {
+      final resp = await http.head(Uri.parse(url));
+      return resp.statusCode == 200;
+    } catch (_) {
+      return false;
     }
   }
 
