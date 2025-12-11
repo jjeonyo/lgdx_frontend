@@ -30,8 +30,6 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  web_socket_channel: ^3.0.0
-  permission_handler: ^11.0.0
   # 오디오 스트리밍 처리를 위한 패키지 (예: sound_stream 또는 flutter_sound)
   # 여기서는 로우 레벨 PCM 처리가 용이한 sound_stream을 예시로 사용합니다.
   sound_stream: ^0.3.0
