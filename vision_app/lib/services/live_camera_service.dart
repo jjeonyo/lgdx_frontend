@@ -9,6 +9,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:record/record.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
+import 'package:image/image.dart' as img;
 
 class LiveCameraService {
   // 🔥 핫스팟 연결 시: PC IP 주소를 ipconfig로 확인 후 아래 IP를 변경하세요!
@@ -16,10 +17,8 @@ class LiveCameraService {
   //    - iPhone 핫스팟: 172.20.10.x
   //    - Android 핫스팟: 192.168.43.x 또는 192.168.137.x
   //    - 일반 Wi-Fi: 192.168.0.x 또는 192.168.1.x
-  static const String REAL_DEVICE_IP =
-      "192.168.0.27"; // PC IP 주소 (ipconfig로 확인)
-  static const String WS_URL =
-      "ws://$REAL_DEVICE_IP:8001/ws/chat"; // test.py는 포트 8001 사용
+  static const String REAL_DEVICE_IP = "172.30.1.95"; // PC IP 주소 (ipconfig로 확인)
+  static const String WS_URL = "ws://$REAL_DEVICE_IP:8001/ws/chat"; // test.py는 포트 8001 사용
 
   CameraController? _cameraController;
   WebSocketChannel? _channel;
@@ -40,12 +39,17 @@ class LiveCameraService {
   Timer? _userSpeechTimer; // 사용자가 말을 멈췄는지 감지
   DateTime? _lastAudioSentTime; // 마지막 오디오 전송 시간
   bool _isRecordingEnabled = true; // 녹음 활성화 상태 (AI 응답 중에는 false)
-
+  bool _isProcessingFrame = false; // 프레임 인코딩 중 중복 처리 방지
+  
   bool _isStreaming = false;
   String? _sessionId;
   String? _roomId; // chat_room ID (room_user_001 형식)
   VoidCallback? _onExitRequested; // 엘리홈으로 이동 콜백
 
+  // 비디오 전송 설정 (스트리밍 프레임 리사이즈 & JPEG 품질)
+  static const int FRAME_TARGET_WIDTH = 320; // 전송용 가로 해상도
+  static const int FRAME_JPEG_QUALITY = 60; // JPEG 품질 (0~100, 낮을수록 용량↓)
+  
   // Firebase에 텍스트 저장 (chat_rooms에 저장)
   Future<void> _saveToFirebase(String sender, String text) async {
     try {
@@ -309,11 +313,10 @@ class LiveCameraService {
         (camera) => camera.lensDirection == CameraLensDirection.back,
         orElse: () => cameras.first,
       );
-
-      print(
-        "📹 [LiveCamera] 선택된 카메라: ${camera.lensDirection == CameraLensDirection.back ? '후면' : '전면'}",
-      );
-
+      
+      print("📹 [LiveCamera] 선택된 카메라: ${camera.lensDirection == CameraLensDirection.back ? '후면' : '전면'}");
+      
+      // 해상도를 한 단계 높여 화질 개선 (medium)
       _cameraController = CameraController(
         camera,
         ResolutionPreset.medium,
@@ -650,42 +653,17 @@ class LiveCameraService {
         } catch (e) {
           print("⚠️ [LiveCamera] 오디오 레코더 초기화 실패: $e");
         }
-
-        // 비디오 프레임 전송 (0.5초마다)
-        _videoTimer = Timer.periodic(const Duration(milliseconds: 500), (
-          timer,
-        ) async {
-          if (!_isStreaming ||
-              _cameraController == null ||
-              !_cameraController!.value.isInitialized ||
-              _channel == null) {
-            return;
-          }
-
-          try {
-            final image = await _cameraController!.takePicture().timeout(
-              const Duration(seconds: 2),
-              onTimeout: () => throw TimeoutException('카메라 이미지 캡처 시간 초과'),
-            );
-
-            final imageFile = File(image.path);
-            if (!await imageFile.exists()) {
-              return;
-            }
-
-            final imageBytes = await imageFile.readAsBytes().timeout(
-              const Duration(seconds: 2),
-              onTimeout: () => throw TimeoutException('이미지 파일 읽기 시간 초과'),
-            );
-
-            final base64Image = base64Encode(imageBytes);
-            _channel!.sink.add(
-              jsonEncode({'type': 'image', 'data': base64Image}),
-            );
-          } catch (e) {
-            // 에러 무시하고 계속 진행
-          }
-        });
+        
+        // 비디오 프레임 전송: 카메라 스트림을 메모리에서 바로 JPEG 인코딩 후 전송 (파일 IO 제거)
+        try {
+          await _cameraController!.startImageStream((CameraImage image) {
+            // 비동기 인코딩; 중복 실행 방지
+            _processAndSendFrame(image);
+          });
+          print("✅ [LiveCamera] 카메라 이미지 스트림 시작 (메모리 인코딩)");
+        } catch (e) {
+          print("⚠️ [LiveCamera] 이미지 스트림 시작 실패: $e");
+        }
       } else {
         print("⚠️ [LiveCamera] 백엔드 연결이 없어 스트리밍을 시작하지 않습니다.");
       }
@@ -698,6 +676,92 @@ class LiveCameraService {
     }
   }
 
+  // 카메라 프레임을 메모리에서 바로 JPEG로 인코딩 후 전송 (파일 IO 제거)
+  Future<void> _processAndSendFrame(CameraImage image) async {
+    if (!_isStreaming || _channel == null) {
+      return;
+    }
+    if (_isProcessingFrame) {
+      // 이전 프레임 인코딩 중이면 현재 프레임은 드롭
+      return;
+    }
+    _isProcessingFrame = true;
+    try {
+      final jpegBytes = await _encodeYuv420ToJpeg(image,
+          targetWidth: FRAME_TARGET_WIDTH, quality: FRAME_JPEG_QUALITY);
+      if (jpegBytes != null && _isStreaming && _channel != null) {
+        _channel!.sink.add(jpegBytes);
+      }
+    } catch (e) {
+      print("⚠️ [LiveCamera] 프레임 인코딩/전송 실패: $e");
+    } finally {
+      _isProcessingFrame = false;
+    }
+  }
+
+  // YUV420 카메라 프레임을 리사이즈 후 JPEG로 인코딩
+  Future<Uint8List?> _encodeYuv420ToJpeg(CameraImage image,
+      {required int targetWidth, required int quality}) async {
+    try {
+      if (image.format.group != ImageFormatGroup.yuv420) {
+        print("⚠️ [LiveCamera] 지원하지 않는 이미지 포맷: ${image.format.group}");
+        return null;
+      }
+
+      final int width = image.width;
+      final int height = image.height;
+      final double scale = width / targetWidth;
+      final int targetHeight = (height / scale).round();
+
+      final img.Image rgbImage =
+          img.Image(width: targetWidth, height: targetHeight);
+
+      final Plane planeY = image.planes[0];
+      final Plane planeU = image.planes[1];
+      final Plane planeV = image.planes[2];
+
+      for (int ty = 0; ty < targetHeight; ty++) {
+        final int sy = (ty * scale).toInt();
+        final int uvRow = sy ~/ 2;
+        for (int tx = 0; tx < targetWidth; tx++) {
+          final int sx = (tx * scale).toInt();
+          final int yIndex = sy * planeY.bytesPerRow + sx;
+          final int uvIndex = uvRow * planeU.bytesPerRow + (sx ~/ 2);
+
+          final int y = planeY.bytes[yIndex];
+          final int u = planeU.bytes[uvIndex];
+          final int v = planeV.bytes[uvIndex];
+
+          // YUV420 to RGB (BT.601)
+          final int c = y - 16;
+          final int d = u - 128;
+          final int e = v - 128;
+          int r = (298 * c + 409 * e + 128) >> 8;
+          int g = (298 * c - 100 * d - 208 * e + 128) >> 8;
+          int b = (298 * c + 516 * d + 128) >> 8;
+
+          r = _clampToByte(r);
+          g = _clampToByte(g);
+          b = _clampToByte(b);
+
+          rgbImage.setPixelRgba(tx, ty, r, g, b, 255);
+        }
+      }
+
+      final List<int> jpeg = img.encodeJpg(rgbImage, quality: quality);
+      return Uint8List.fromList(jpeg);
+    } catch (e) {
+      print("⚠️ [LiveCamera] YUV→JPEG 인코딩 실패: $e");
+      return null;
+    }
+  }
+
+  int _clampToByte(int val) {
+    if (val < 0) return 0;
+    if (val > 255) return 255;
+    return val;
+  }
+  
   // 공식 예제 패턴: 오디오 청크를 현재 턴 버퍼에 계속 이어붙임
   // Python 예제의 wf.writeframes(response.data)와 동일한 패턴
   void _appendAudioChunk(Uint8List audioBytes) {
@@ -953,7 +1017,14 @@ class LiveCameraService {
   // 스트리밍 중지
   Future<void> stopStreaming() async {
     _isStreaming = false;
-
+    
+    // 이미지 스트림 중지 (메모리 스트리밍 사용)
+    try {
+      if (_cameraController != null && _cameraController!.value.isStreamingImages) {
+        await _cameraController!.stopImageStream();
+      }
+    } catch (_) {}
+    
     _videoTimer?.cancel();
     _videoTimer = null;
 
