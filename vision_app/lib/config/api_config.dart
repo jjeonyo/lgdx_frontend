@@ -3,7 +3,7 @@ import 'dart:io';
 class ApiConfig {
   // *** 중요: 실제 기기(폰)에서 테스트할 때는 이 값을 컴퓨터의 IP 주소로 바꾸세요! ***
   // 예: static const String _realDeviceIp = '192.168.0.15';
-  static const String _realDeviceIp = '192.168.0.202'; 
+  static const String _realDeviceIp = '192.168.0.47'; 
 
   static String get baseUrl {
     // 실제 기기(갤럭시/아이폰)에서 테스트 중이시라면 아래 코드를 사용하세요.
